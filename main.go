@@ -432,7 +432,8 @@ func main() {
 	}
 
 	// db connection
-	db, err := pgxpool.New(context.Background(), "postgres://localhost:5432/expense_tracker")
+	var err error
+	db, err = pgxpool.New(context.Background(), "postgres://localhost:5432/expense_tracker")
 	if err != nil {
 		log.Fatal("Connection failed:", err)
 	}
