@@ -586,7 +586,7 @@ function ExpenseRow({ exp, onDelete, categories }) {
 }
 
 // ── HOME PAGE ─────────────────────────────────────────────────────────────────
-function HomePage({ expenses, onAdd, categories, stats }) {
+function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
   const recent = expenses.slice(0, 5);
 
   return (
@@ -784,7 +784,7 @@ function HomePage({ expenses, onAdd, categories, stats }) {
               <ExpenseRow
                 key={e.id}
                 exp={e}
-                onDelete={() => {}}
+                onDelete={onDelete}
                 categories={categories}
               />
             ))
@@ -1301,7 +1301,8 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
     >
       {/* Brand */}
       <div
-        style={{ padding: "28px 24px 20px", borderBottom: "1px solid #0f1623" }}
+        onClick={() => setPage("home")}
+        style={{ padding: "28px 24px 20px", borderBottom: "1px solid #0f1623", cursor: "pointer" }}
       >
         <div
           style={{
@@ -1573,6 +1574,7 @@ export default function App() {
           <HomePage
             expenses={expenses}
             onAdd={() => setModal(true)}
+            onDelete={deleteExpense}
             categories={categories}
             stats={stats}
           />
