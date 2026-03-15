@@ -1005,16 +1005,7 @@ function MonthPicker({ value, onChange }) {
         }}
       >
         <span>{displayLabel}</span>
-        <span
-          style={{
-            fontSize: 10,
-            color: "#475569",
-            transition: "transform .2s",
-            transform: open ? "rotate(180deg)" : "rotate(0)",
-          }}
-        >
-          ▼
-        </span>
+        <span style={{ fontSize: 15, color: "#475569", lineHeight: 1 }}>📅</span>
       </button>
 
       {/* Dropdown */}
