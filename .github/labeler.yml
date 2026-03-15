@@ -1,0 +1,48 @@
+# Labels for the PR Labeler workflow
+# See: https://github.com/actions/labeler
+
+# Backend changes
+backend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "main.go"
+          - "backend/**"
+          - "go.mod"
+          - "go.sum"
+
+# Frontend changes
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "frontend/**"
+
+# Documentation
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+          - "docs/**"
+
+# CI/CD changes
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+
+# Docker changes
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Dockerfile"
+          - "docker-compose.yml"
+          - ".dockerignore"
+
+# Configuration changes
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "*.json"
+          - "*.yml"
+          - "*.yaml"
+          - "*.toml"
+          - ".env*"
