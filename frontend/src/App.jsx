@@ -59,6 +59,19 @@ function dayLabel(d) {
   });
 }
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) {
+    return "Good morning 👋";
+  } else if (hour >= 12 && hour < 17) {
+    return "Good afternoon 👋";
+  } else if (hour >= 17 && hour < 21) {
+    return "Good evening 👋";
+  } else {
+    return "Good night 🌙";
+  }
+}
+
 const CAT_COLORS = [
   "#22d3a0",
   "#f59e0b",
@@ -602,7 +615,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
             color: "#f1f5f9",
           }}
         >
-          Good morning 👋
+          {getGreeting()}
         </div>
         <div style={{ color: "#475569", marginTop: 4 }}>
           Here's your spending overview
