@@ -83,6 +83,38 @@ const CAT_COLORS = [
   "#06b6d4",
 ];
 
+// ── THEMES ────────────────────────────────────────────────────────────────────
+const THEMES = {
+  dark: {
+    mode: "dark",
+    bg: "#0a0f1e",
+    sidebarBg: "#07090f",
+    cardBg: "#0d1117",
+    cardBgHover: "#161b22",
+    text: "#f1f5f9",
+    textSecondary: "#64748b",
+    textTertiary: "#334155",
+    border: "#1e2d47",
+    borderLight: "#0f1623",
+    inputBg: "#0a0f1e",
+    accent: "#22d3a0",
+  },
+  light: {
+    mode: "light",
+    bg: "#f8fafc",
+    sidebarBg: "#ffffff",
+    cardBg: "#ffffff",
+    cardBgHover: "#f1f5f9",
+    text: "#0f172a",
+    textSecondary: "#64748b",
+    textTertiary: "#94a3b8",
+    border: "#e2e8f0",
+    borderLight: "#f1f5f9",
+    inputBg: "#f8fafc",
+    accent: "#22d3a0",
+  },
+};
+
 // ── Components ────────────────────────────────────────────────────────────────
 
 function Avatar({ initials, size = 36 }) {
@@ -241,6 +273,7 @@ function AddExpenseModal({ onClose, onAdd, categories }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today());
   const [note, setNote] = useState("");
+  const [txnType, setTxnType] = useState("debit");
   const [loading, setLoading] = useState(false);
 
   const subcats = category
@@ -261,6 +294,7 @@ function AddExpenseModal({ onClose, onAdd, categories }) {
           amount: parseFloat(amount),
           date,
           note,
+          txnType,
         }),
       });
       onAdd();
@@ -347,6 +381,58 @@ function AddExpenseModal({ onClose, onAdd, categories }) {
 
         {/* Form fields */}
         {[
+          {
+            label: "Transaction Type",
+            el: (
+              <div style={{ display: "flex", gap: 8 }}>
+                {["debit", "credit"].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTxnType(t)}
+                    style={{
+                      flex: 1,
+                      padding: "11px 14px",
+                      borderRadius: 10,
+                      border: "1.5px solid",
+                      borderColor:
+                        txnType === t
+                          ? t === "debit"
+                            ? "#f43f5e"
+                            : "#22d3a0"
+                          : "#1e2d47",
+                      background:
+                        txnType === t
+                          ? t === "debit"
+                            ? "#f43f5e18"
+                            : "#22d3a018"
+                          : "#1a2236",
+                      color:
+                        txnType === t
+                          ? t === "debit"
+                            ? "#f43f5e"
+                            : "#22d3a0"
+                          : "#64748b",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      transition: "all .2s",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>
+                      {t === "debit" ? "🔴" : "🟢"}
+                    </span>
+                    {t === "debit" ? "Paid (Debit)" : "To Receive (Credit)"}
+                  </button>
+                ))}
+              </div>
+            ),
+          },
           {
             label: "Expense Title",
             el: (
@@ -516,7 +602,7 @@ function AddExpenseModal({ onClose, onAdd, categories }) {
 }
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────────────
-function ExpenseRow({ exp, onDelete, categories }) {
+function ExpenseRow({ exp, onDelete, categories, theme }) {
   const catInfo = categories.find((c) => exp.category.includes(c.name));
   const idx = categories.indexOf(catInfo);
   const color = CAT_COLORS[idx % CAT_COLORS.length] || "#22d3a0";
@@ -527,14 +613,14 @@ function ExpenseRow({ exp, onDelete, categories }) {
         display: "flex",
         alignItems: "center",
         gap: 14,
-        background: "#0d1117",
-        border: "1px solid #1e2d47",
+        background: theme.cardBg,
+        border: `1px solid ${theme.border}`,
         borderRadius: 14,
         padding: "14px 18px",
         transition: "border-color .2s",
       }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#22d3a040")}
-      onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1e2d47")}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = theme.border)}
     >
       <div
         style={{
@@ -555,16 +641,37 @@ function ExpenseRow({ exp, onDelete, categories }) {
         <div
           style={{
             fontWeight: 600,
-            color: "#f1f5f9",
+            color: theme.text,
             fontSize: 14,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
           }}
         >
           {exp.title}
+          {exp.txnType === "credit" && (
+            <span
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: "#22d3a0",
+                background: "#22d3a018",
+                border: "1px solid #22d3a044",
+                padding: "2px 7px",
+                borderRadius: 6,
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+                flexShrink: 0,
+              }}
+            >
+              To Receive
+            </span>
+          )}
         </div>
-        <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
+        <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
           {exp.subcategory} · {dayLabel(exp.date)}
         </div>
       </div>
@@ -573,10 +680,11 @@ function ExpenseRow({ exp, onDelete, categories }) {
           fontFamily: "'Syne',sans-serif",
           fontWeight: 700,
           fontSize: 16,
-          color: "#f1f5f9",
+          color: exp.txnType === "credit" ? "#22d3a0" : theme.text,
           flexShrink: 0,
         }}
       >
+        {exp.txnType === "credit" ? "+" : ""}
         {fmt(exp.amount)}
       </div>
       <button
@@ -584,14 +692,14 @@ function ExpenseRow({ exp, onDelete, categories }) {
         style={{
           background: "none",
           border: "none",
-          color: "#334155",
+          color: theme.textTertiary,
           cursor: "pointer",
           fontSize: 16,
           padding: 4,
           lineHeight: 1,
         }}
         onMouseEnter={(e) => (e.currentTarget.style.color = "#f43f5e")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#334155")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = theme.textTertiary)}
       >
         ✕
       </button>
@@ -600,7 +708,7 @@ function ExpenseRow({ exp, onDelete, categories }) {
 }
 
 // ── HOME PAGE ─────────────────────────────────────────────────────────────────
-function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
+function HomePage({ expenses, onAdd, onDelete, categories, stats, theme }) {
   const recent = expenses.slice(0, 5);
 
   return (
@@ -612,12 +720,12 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
             fontFamily: "'Syne',sans-serif",
             fontSize: 28,
             fontWeight: 800,
-            color: "#f1f5f9",
+            color: theme.text,
           }}
         >
           {getGreeting()}
         </div>
-        <div style={{ color: "#475569", marginTop: 4 }}>
+        <div style={{ color: theme.textSecondary, marginTop: 4 }}>
           Here's your spending overview
         </div>
       </div>
@@ -626,20 +734,26 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3,1fr)",
+          gridTemplateColumns: "repeat(2,1fr)",
           gap: 16,
           marginBottom: 32,
         }}
       >
         {[
           {
-            label: "Total Logged",
+            label: "Total Spent",
             value: fmt(stats.total),
             icon: "📊",
+            accent: "#f43f5e",
+          },
+          {
+            label: "To Receive",
+            value: fmt(stats.totalCredit || 0),
+            icon: "💰",
             accent: "#22d3a0",
           },
           {
-            label: "This Month",
+            label: "This Month Spent",
             value: fmt(stats.thisMonth),
             icon: "📅",
             accent: "#6366f1",
@@ -656,7 +770,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
           <div
             key={label}
             style={{
-              background: "#0d1117",
+              background: theme.cardBg,
               border: `1px solid ${accent}33`,
               borderRadius: 16,
               padding: "20px 22px",
@@ -678,7 +792,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
             <div
               style={{
                 fontSize: 12,
-                color: "#475569",
+                color: theme.textSecondary,
                 fontWeight: 600,
                 textTransform: "uppercase",
                 letterSpacing: 0.5,
@@ -775,7 +889,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
             fontFamily: "'Syne',sans-serif",
             fontSize: 17,
             fontWeight: 700,
-            color: "#f1f5f9",
+            color: theme.text,
             marginBottom: 14,
           }}
         >
@@ -785,7 +899,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
           {recent.length === 0 ? (
             <div
               style={{
-                color: "#475569",
+                color: theme.textSecondary,
                 fontSize: 14,
                 textAlign: "center",
                 padding: "30px 0",
@@ -800,6 +914,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
                 exp={e}
                 onDelete={onDelete}
                 categories={categories}
+                theme={theme}
               />
             ))
           )}
@@ -810,7 +925,7 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats }) {
 }
 
 // ── EXPENSES PAGE ─────────────────────────────────────────────────────────────
-function ExpensesPage({ expenses, onDelete, categories }) {
+function ExpensesPage({ expenses, onDelete, categories, theme }) {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("All");
 
@@ -831,13 +946,13 @@ function ExpensesPage({ expenses, onDelete, categories }) {
           fontFamily: "'Syne',sans-serif",
           fontSize: 28,
           fontWeight: 800,
-          color: "#f1f5f9",
+          color: theme.text,
           marginBottom: 8,
         }}
       >
         All Expenses
       </div>
-      <div style={{ color: "#475569", marginBottom: 28 }}>
+      <div style={{ color: theme.textSecondary, marginBottom: 28 }}>
         {filtered.length} transaction{filtered.length !== 1 ? "s" : ""}
       </div>
 
@@ -861,10 +976,10 @@ function ExpensesPage({ expenses, onDelete, categories }) {
           style={{
             width: "100%",
             padding: "12px 14px 12px 40px",
-            background: "#0d1117",
-            border: "1.5px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1.5px solid ${theme.border}`,
             borderRadius: 12,
-            color: "#e2e8f0",
+            color: theme.text,
             fontSize: 14,
             outline: "none",
             fontFamily: "inherit",
@@ -884,9 +999,9 @@ function ExpensesPage({ expenses, onDelete, categories }) {
               padding: "6px 14px",
               borderRadius: 20,
               border: "1px solid",
-              borderColor: filterCat === c ? "#22d3a0" : "#1e2d47",
+              borderColor: filterCat === c ? "#22d3a0" : theme.border,
               background: filterCat === c ? "#22d3a022" : "transparent",
-              color: filterCat === c ? "#22d3a0" : "#64748b",
+              color: filterCat === c ? "#22d3a0" : theme.textSecondary,
               fontSize: 12,
               fontWeight: 600,
               cursor: "pointer",
@@ -902,7 +1017,7 @@ function ExpensesPage({ expenses, onDelete, categories }) {
         {filtered.length === 0 ? (
           <div
             style={{
-              color: "#475569",
+              color: theme.textSecondary,
               fontSize: 14,
               textAlign: "center",
               padding: "40px 0",
@@ -917,6 +1032,7 @@ function ExpensesPage({ expenses, onDelete, categories }) {
               exp={e}
               onDelete={onDelete}
               categories={categories}
+              theme={theme}
             />
           ))
         )}
@@ -926,14 +1042,16 @@ function ExpensesPage({ expenses, onDelete, categories }) {
         style={{
           marginTop: 24,
           padding: "18px 22px",
-          background: "#0d1117",
-          border: "1px solid #1e2d47",
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 14,
           display: "flex",
           justifyContent: "space-between",
         }}
       >
-        <span style={{ color: "#64748b", fontWeight: 600 }}>Total</span>
+        <span style={{ color: theme.textSecondary, fontWeight: 600 }}>
+          Total
+        </span>
         <span
           style={{
             fontFamily: "'Syne',sans-serif",
@@ -965,7 +1083,7 @@ const MONTH_LABELS = [
   "Dec",
 ];
 
-function MonthPicker({ value, onChange }) {
+function MonthPicker({ value, onChange, theme }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -999,10 +1117,10 @@ function MonthPicker({ value, onChange }) {
         style={{
           width: "100%",
           padding: "10px 12px",
-          background: "#0a0f1e",
-          border: "1px solid #1e2d47",
+          background: theme.inputBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 10,
-          color: "#f1f5f9",
+          color: theme.text,
           fontSize: 13,
           fontFamily: "inherit",
           cursor: "pointer",
@@ -1012,13 +1130,15 @@ function MonthPicker({ value, onChange }) {
           transition: "border-color .2s",
           outline: "none",
         }}
-        onFocus={(e) => (e.currentTarget.style.borderColor = "#22d3a0")}
+        onFocus={(e) => (e.currentTarget.style.borderColor = theme.accent)}
         onBlur={(e) => {
-          if (!open) e.currentTarget.style.borderColor = "#1e2d47";
+          if (!open) e.currentTarget.style.borderColor = theme.border;
         }}
       >
         <span>{displayLabel}</span>
-        <span style={{ fontSize: 15, color: "#475569", lineHeight: 1 }}>📅</span>
+        <span style={{ fontSize: 15, color: theme.textSecondary, lineHeight: 1 }}>
+          📅
+        </span>
       </button>
 
       {/* Dropdown */}
@@ -1029,10 +1149,10 @@ function MonthPicker({ value, onChange }) {
             top: "calc(100% + 6px)",
             left: 0,
             width: 260,
-            background: "#111827",
-            border: "1px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 14,
-            boxShadow: "0 16px 48px rgba(0,0,0,.55)",
+            boxShadow: theme.mode === 'dark' ? "0 16px 48px rgba(0,0,0,.55)" : "0 16px 48px rgba(0,0,0,.15)",
             zIndex: 999,
             padding: "16px",
             animation: "mpFadeIn .15s ease",
@@ -1057,8 +1177,8 @@ function MonthPicker({ value, onChange }) {
                 height: 30,
                 borderRadius: 8,
                 border: "none",
-                background: "#1a2236",
-                color: "#94a3b8",
+                background: theme.inputBg,
+                color: theme.textSecondary,
                 fontSize: 14,
                 cursor: "pointer",
                 display: "flex",
@@ -1067,10 +1187,10 @@ function MonthPicker({ value, onChange }) {
                 transition: "background .15s",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#22d3a022")
+                (e.currentTarget.style.background = `${theme.accent}22`)
               }
               onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "#1a2236")
+                (e.currentTarget.style.background = theme.inputBg)
               }
             >
               ‹
@@ -1080,7 +1200,7 @@ function MonthPicker({ value, onChange }) {
                 fontFamily: "'Syne',sans-serif",
                 fontWeight: 700,
                 fontSize: 15,
-                color: "#f1f5f9",
+                color: theme.text,
                 letterSpacing: 0.5,
               }}
             >
@@ -1094,8 +1214,8 @@ function MonthPicker({ value, onChange }) {
                 height: 30,
                 borderRadius: 8,
                 border: "none",
-                background: "#1a2236",
-                color: "#94a3b8",
+                background: theme.inputBg,
+                color: theme.textSecondary,
                 fontSize: 14,
                 cursor: "pointer",
                 display: "flex",
@@ -1104,10 +1224,10 @@ function MonthPicker({ value, onChange }) {
                 transition: "background .15s",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#22d3a022")
+                (e.currentTarget.style.background = `${theme.accent}22`)
               }
               onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "#1a2236")
+                (e.currentTarget.style.background = theme.inputBg)
               }
             >
               ›
@@ -1137,14 +1257,14 @@ function MonthPicker({ value, onChange }) {
                     padding: "9px 0",
                     borderRadius: 9,
                     border: isSelected
-                      ? "1.5px solid #22d3a0"
+                      ? `1.5px solid ${theme.accent}`
                       : isCurrent
-                        ? "1px solid #22d3a044"
+                        ? `1px solid ${theme.accent}44`
                         : "1px solid transparent",
                     background: isSelected
-                      ? "linear-gradient(135deg,#22d3a022,#14b8a622)"
+                      ? `linear-gradient(135deg,${theme.accent}22,${theme.accent}22)`
                       : "transparent",
-                    color: isSelected ? "#22d3a0" : "#94a3b8",
+                    color: isSelected ? theme.accent : theme.textSecondary,
                     fontSize: 12,
                     fontWeight: isSelected ? 700 : 500,
                     cursor: "pointer",
@@ -1153,14 +1273,14 @@ function MonthPicker({ value, onChange }) {
                   }}
                   onMouseEnter={(e) => {
                     if (!isSelected) {
-                      e.currentTarget.style.background = "#ffffff0a";
-                      e.currentTarget.style.color = "#e2e8f0";
+                      e.currentTarget.style.background = theme.cardBgHover;
+                      e.currentTarget.style.color = theme.text;
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (!isSelected) {
                       e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.color = "#94a3b8";
+                      e.currentTarget.style.color = theme.textSecondary;
                     }
                   }}
                 >
@@ -1177,7 +1297,7 @@ function MonthPicker({ value, onChange }) {
               justifyContent: "space-between",
               marginTop: 12,
               paddingTop: 10,
-              borderTop: "1px solid #1e2d47",
+              borderTop: `1px solid ${theme.border}`,
             }}
           >
             <button
@@ -1190,7 +1310,7 @@ function MonthPicker({ value, onChange }) {
               style={{
                 background: "none",
                 border: "none",
-                color: "#22d3a0",
+                color: theme.accent,
                 fontSize: 11,
                 fontWeight: 600,
                 cursor: "pointer",
@@ -1200,7 +1320,7 @@ function MonthPicker({ value, onChange }) {
                 transition: "background .15s",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#22d3a015")
+                (e.currentTarget.style.background = `${theme.accent}15`)
               }
               onMouseLeave={(e) =>
                 (e.currentTarget.style.background = "transparent")
@@ -1216,7 +1336,7 @@ function MonthPicker({ value, onChange }) {
 }
 
 // ── INCOME PAGE ─────────────────────────────────────────────────────────────
-function IncomePage({ incomes, onAdd, onDelete }) {
+function IncomePage({ incomes, onAdd, onDelete, theme }) {
   const [form, setForm] = useState({
     month: new Date().toISOString().slice(0, 7),
     source: "",
@@ -1268,13 +1388,13 @@ function IncomePage({ incomes, onAdd, onDelete }) {
           fontFamily: "'Syne',sans-serif",
           fontSize: 28,
           fontWeight: 800,
-          color: "#f1f5f9",
+          color: theme.text,
           marginBottom: 8,
         }}
       >
         Income
       </div>
-      <div style={{ color: "#475569", marginBottom: 32 }}>
+      <div style={{ color: theme.textSecondary, marginBottom: 32 }}>
         Track your monthly revenue &amp; earnings
       </div>
 
@@ -1289,8 +1409,8 @@ function IncomePage({ incomes, onAdd, onDelete }) {
       >
         <div
           style={{
-            background: "#0d1117",
-            border: "1px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 16,
             padding: "20px 24px",
           }}
@@ -1298,7 +1418,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
           <div
             style={{
               fontSize: 11,
-              color: "#475569",
+              color: theme.textSecondary,
               fontWeight: 700,
               letterSpacing: 0.8,
               textTransform: "uppercase",
@@ -1320,8 +1440,8 @@ function IncomePage({ incomes, onAdd, onDelete }) {
         </div>
         <div
           style={{
-            background: "#0d1117",
-            border: "1px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 16,
             padding: "20px 24px",
           }}
@@ -1329,7 +1449,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
           <div
             style={{
               fontSize: 11,
-              color: "#475569",
+              color: theme.textSecondary,
               fontWeight: 700,
               letterSpacing: 0.8,
               textTransform: "uppercase",
@@ -1354,8 +1474,8 @@ function IncomePage({ incomes, onAdd, onDelete }) {
       {/* Add form */}
       <div
         style={{
-          background: "#0d1117",
-          border: "1px solid #1e2d47",
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 18,
           padding: "24px 28px",
           marginBottom: 28,
@@ -1366,7 +1486,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
             fontFamily: "'Syne',sans-serif",
             fontSize: 16,
             fontWeight: 700,
-            color: "#f1f5f9",
+            color: theme.text,
             marginBottom: 16,
           }}
         >
@@ -1385,7 +1505,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
             <div
               style={{
                 fontSize: 11,
-                color: "#475569",
+                color: theme.textSecondary,
                 fontWeight: 600,
                 marginBottom: 6,
                 textTransform: "uppercase",
@@ -1397,13 +1517,14 @@ function IncomePage({ incomes, onAdd, onDelete }) {
             <MonthPicker
               value={form.month}
               onChange={(v) => setForm((f) => ({ ...f, month: v }))}
+              theme={theme}
             />
           </div>
           <div>
             <div
               style={{
                 fontSize: 11,
-                color: "#475569",
+                color: theme.textSecondary,
                 fontWeight: 600,
                 marginBottom: 6,
                 textTransform: "uppercase",
@@ -1422,10 +1543,10 @@ function IncomePage({ incomes, onAdd, onDelete }) {
               style={{
                 width: "100%",
                 padding: "10px 12px",
-                background: "#0a0f1e",
-                border: "1px solid #1e2d47",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
                 borderRadius: 10,
-                color: "#f1f5f9",
+                color: theme.text,
                 fontSize: 13,
                 fontFamily: "inherit",
                 outline: "none",
@@ -1436,7 +1557,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
             <div
               style={{
                 fontSize: 11,
-                color: "#475569",
+                color: theme.textSecondary,
                 fontWeight: 600,
                 marginBottom: 6,
                 textTransform: "uppercase",
@@ -1456,10 +1577,10 @@ function IncomePage({ incomes, onAdd, onDelete }) {
               style={{
                 width: "100%",
                 padding: "10px 12px",
-                background: "#0a0f1e",
-                border: "1px solid #1e2d47",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
                 borderRadius: 10,
-                color: "#f1f5f9",
+                color: theme.text,
                 fontSize: 13,
                 fontFamily: "inherit",
                 outline: "none",
@@ -1497,7 +1618,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
         <div
           style={{
             textAlign: "center",
-            color: "#334155",
+            color: theme.textTertiary,
             padding: "48px 0",
             fontSize: 14,
           }}
@@ -1526,7 +1647,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
                   style={{
                     fontSize: 12,
                     fontWeight: 700,
-                    color: "#475569",
+                    color: theme.textSecondary,
                     textTransform: "uppercase",
                     letterSpacing: 0.8,
                   }}
@@ -1548,8 +1669,8 @@ function IncomePage({ incomes, onAdd, onDelete }) {
                 <div
                   key={entry.id}
                   style={{
-                    background: "#0d1117",
-                    border: "1px solid #1e2d47",
+                    background: theme.cardBg,
+                    border: `1px solid ${theme.border}`,
                     borderRadius: 12,
                     padding: "14px 18px",
                     display: "flex",
@@ -1562,7 +1683,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
                     (e.currentTarget.style.borderColor = "#22d3a040")
                   }
                   onMouseLeave={(e) =>
-                    (e.currentTarget.style.borderColor = "#1e2d47")
+                    (e.currentTarget.style.borderColor = theme.border)
                   }
                 >
                   <div
@@ -1584,14 +1705,18 @@ function IncomePage({ incomes, onAdd, onDelete }) {
                     <div
                       style={{
                         fontWeight: 600,
-                        color: "#e2e8f0",
+                        color: theme.text,
                         fontSize: 14,
                       }}
                     >
                       {entry.source}
                     </div>
                     <div
-                      style={{ fontSize: 12, color: "#475569", marginTop: 2 }}
+                      style={{
+                        fontSize: 12,
+                        color: theme.textSecondary,
+                        marginTop: 2,
+                      }}
                     >
                       {label}
                     </div>
@@ -1612,7 +1737,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
                     style={{
                       background: "none",
                       border: "none",
-                      color: "#334155",
+                      color: theme.textTertiary,
                       cursor: "pointer",
                       fontSize: 16,
                       padding: 4,
@@ -1622,7 +1747,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
                       (e.currentTarget.style.color = "#f43f5e")
                     }
                     onMouseLeave={(e) =>
-                      (e.currentTarget.style.color = "#334155")
+                      (e.currentTarget.style.color = theme.textTertiary)
                     }
                   >
                     ✕
@@ -1638,7 +1763,7 @@ function IncomePage({ incomes, onAdd, onDelete }) {
 }
 
 // ── VISUALISE PAGE ────────────────────────────────────────────────────────────
-function VisualisePage({ expenses, categories, incomes }) {
+function VisualisePage({ expenses, categories, incomes, theme }) {
   const [dayView, setDayView] = useState("week");
 
   // Category totals
@@ -1713,13 +1838,13 @@ function VisualisePage({ expenses, categories, incomes }) {
     return (
       <div
         style={{
-          background: "#1a2236",
-          border: "1px solid #1e2d47",
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 10,
           padding: "10px 14px",
           fontFamily: "'DM Sans',sans-serif",
           fontSize: 13,
-          color: "#f1f5f9",
+          color: theme.text,
         }}
       >
         <div style={{ fontWeight: 700, marginBottom: 6 }}>{label}</div>
@@ -1737,13 +1862,13 @@ function VisualisePage({ expenses, categories, incomes }) {
     return (
       <div
         style={{
-          background: "#1a2236",
-          border: "1px solid #1e2d47",
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 10,
           padding: "10px 14px",
           fontFamily: "'DM Sans',sans-serif",
           fontSize: 13,
-          color: "#f1f5f9",
+          color: theme.text,
         }}
       >
         <div style={{ fontWeight: 700 }}>{payload[0].name}</div>
@@ -1763,13 +1888,13 @@ function VisualisePage({ expenses, categories, incomes }) {
           fontFamily: "'Syne',sans-serif",
           fontSize: 28,
           fontWeight: 800,
-          color: "#f1f5f9",
+          color: theme.text,
           marginBottom: 8,
         }}
       >
         Visualise
       </div>
-      <div style={{ color: "#475569", marginBottom: 32 }}>
+      <div style={{ color: theme.textSecondary, marginBottom: 32 }}>
         Charts & spending patterns
       </div>
 
@@ -1784,8 +1909,8 @@ function VisualisePage({ expenses, categories, incomes }) {
       >
         <div
           style={{
-            background: "#0d1117",
-            border: "1px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 18,
             padding: "24px",
           }}
@@ -1795,13 +1920,13 @@ function VisualisePage({ expenses, categories, incomes }) {
               fontFamily: "'Syne',sans-serif",
               fontSize: 16,
               fontWeight: 700,
-              color: "#f1f5f9",
+              color: theme.text,
               marginBottom: 4,
             }}
           >
             Category Split
           </div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16 }}>
             Percentage breakdown
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -1825,8 +1950,8 @@ function VisualisePage({ expenses, categories, incomes }) {
 
         <div
           style={{
-            background: "#0d1117",
-            border: "1px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 18,
             padding: "24px",
           }}
@@ -1836,13 +1961,13 @@ function VisualisePage({ expenses, categories, incomes }) {
               fontFamily: "'Syne',sans-serif",
               fontSize: 16,
               fontWeight: 700,
-              color: "#f1f5f9",
+              color: theme.text,
               marginBottom: 4,
             }}
           >
             Amounts by Category
           </div>
-          <div style={{ fontSize: 12, color: "#475569", marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16 }}>
             Absolute values (₹)
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -1872,8 +1997,8 @@ function VisualisePage({ expenses, categories, incomes }) {
       {/* Day-wise bar */}
       <div
         style={{
-          background: "#0d1117",
-          border: "1px solid #1e2d47",
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 18,
           padding: "24px 28px",
           marginBottom: 24,
@@ -1893,12 +2018,12 @@ function VisualisePage({ expenses, categories, incomes }) {
                 fontFamily: "'Syne',sans-serif",
                 fontSize: 18,
                 fontWeight: 700,
-                color: "#f1f5f9",
+                color: theme.text,
               }}
             >
               Daily Spend
             </div>
-            <div style={{ fontSize: 13, color: "#475569", marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
               Expense amount per day
             </div>
           </div>
@@ -1911,9 +2036,9 @@ function VisualisePage({ expenses, categories, incomes }) {
                   padding: "5px 14px",
                   borderRadius: 8,
                   border: "1px solid",
-                  borderColor: dayView === v ? "#22d3a0" : "#1e2d47",
+                  borderColor: dayView === v ? "#22d3a0" : theme.border,
                   background: dayView === v ? "#22d3a022" : "transparent",
-                  color: dayView === v ? "#22d3a0" : "#475569",
+                  color: dayView === v ? "#22d3a0" : theme.textSecondary,
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: "pointer",
@@ -1929,17 +2054,17 @@ function VisualisePage({ expenses, categories, incomes }) {
           <BarChart data={dayData} barSize={28}>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#1e2d47"
+              stroke={theme.border}
               vertical={false}
             />
             <XAxis
               dataKey="name"
-              tick={{ fill: "#475569", fontSize: 11 }}
+              tick={{ fill: theme.textSecondary, fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "#475569", fontSize: 11 }}
+              tick={{ fill: theme.textSecondary, fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) =>
@@ -1963,8 +2088,8 @@ function VisualisePage({ expenses, categories, incomes }) {
       {/* Month-wise bar */}
       <div
         style={{
-          background: "#0d1117",
-          border: "1px solid #1e2d47",
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
           borderRadius: 18,
           padding: "24px 28px",
         }}
@@ -1974,30 +2099,30 @@ function VisualisePage({ expenses, categories, incomes }) {
             fontFamily: "'Syne',sans-serif",
             fontSize: 18,
             fontWeight: 700,
-            color: "#f1f5f9",
+            color: theme.text,
             marginBottom: 4,
           }}
         >
           Monthly Overview
         </div>
-        <div style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}>
           Total spend per calendar month
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={monthData} barSize={36}>
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#1e2d47"
+              stroke={theme.border}
               vertical={false}
             />
             <XAxis
               dataKey="name"
-              tick={{ fill: "#475569", fontSize: 11 }}
+              tick={{ fill: theme.textSecondary, fontSize: 11 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "#475569", fontSize: 11 }}
+              tick={{ fill: theme.textSecondary, fontSize: 11 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) =>
@@ -2022,8 +2147,8 @@ function VisualisePage({ expenses, categories, incomes }) {
       {(incomes || []).length > 0 && incVsExpData.length > 0 && (
         <div
           style={{
-            background: "#0d1117",
-            border: "1px solid #1e2d47",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
             borderRadius: 18,
             padding: "24px 28px",
             marginTop: 24,
@@ -2034,30 +2159,30 @@ function VisualisePage({ expenses, categories, incomes }) {
               fontFamily: "'Syne',sans-serif",
               fontSize: 18,
               fontWeight: 700,
-              color: "#f1f5f9",
+              color: theme.text,
               marginBottom: 4,
             }}
           >
             Income vs Expenses
           </div>
-          <div style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>
+          <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}>
             Monthly income compared to spending
           </div>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={incVsExpData} barSize={18} barGap={4}>
               <CartesianGrid
                 strokeDasharray="3 3"
-                stroke="#1e2d47"
+                stroke={theme.border}
                 vertical={false}
               />
               <XAxis
                 dataKey="name"
-                tick={{ fill: "#475569", fontSize: 11 }}
+                tick={{ fill: theme.textSecondary, fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: "#475569", fontSize: 11 }}
+                tick={{ fill: theme.textSecondary, fontSize: 11 }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) =>
@@ -2093,7 +2218,15 @@ function VisualisePage({ expenses, categories, incomes }) {
 }
 
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
-function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
+function Sidebar({
+  page,
+  setPage,
+  user,
+  onSignOut,
+  onAdd,
+  theme,
+  onToggleTheme,
+}) {
   const nav = [
     { id: "home", icon: "🏠", label: "Homepage" },
     { id: "expenses", icon: "📋", label: "Expenses" },
@@ -2104,8 +2237,8 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
     <div
       style={{
         width: 230,
-        background: "#07090f",
-        borderRight: "1px solid #1e2d47",
+        background: theme.sidebarBg,
+        borderRight: `1px solid ${theme.border}`,
         display: "flex",
         flexDirection: "column",
         height: "100vh",
@@ -2119,7 +2252,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
         onClick={() => setPage("home")}
         style={{
           padding: "28px 24px 20px",
-          borderBottom: "1px solid #0f1623",
+          borderBottom: `1px solid ${theme.borderLight}`,
           cursor: "pointer",
         }}
       >
@@ -2128,7 +2261,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
             fontFamily: "'Syne',sans-serif",
             fontSize: 22,
             fontWeight: 800,
-            color: "#f1f5f9",
+            color: theme.text,
           }}
         >
           💸 Spendly
@@ -2136,7 +2269,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
         <div
           style={{
             fontSize: 11,
-            color: "#334155",
+            color: theme.textSecondary,
             marginTop: 2,
             letterSpacing: 0.5,
           }}
@@ -2185,7 +2318,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
           style={{
             fontSize: 10,
             fontWeight: 700,
-            color: "#334155",
+            color: theme.textTertiary,
             letterSpacing: 1,
             padding: "8px 12px 6px",
             textTransform: "uppercase",
@@ -2206,18 +2339,21 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
               borderRadius: 10,
               border: "none",
               cursor: "pointer",
-              background: page === id ? "#22d3a015" : "transparent",
-              color: page === id ? "#22d3a0" : "#64748b",
+              background: page === id ? `${theme.accent}15` : "transparent",
+              color: page === id ? theme.accent : theme.textSecondary,
               fontSize: 14,
               fontWeight: page === id ? 700 : 500,
               marginBottom: 4,
               fontFamily: "inherit",
               borderLeft:
-                page === id ? "3px solid #22d3a0" : "3px solid transparent",
+                page === id
+                  ? `3px solid ${theme.accent}`
+                  : "3px solid transparent",
               transition: "all .15s",
             }}
             onMouseEnter={(e) => {
-              if (page !== id) e.currentTarget.style.background = "#ffffff08";
+              if (page !== id)
+                e.currentTarget.style.background = theme.cardBgHover;
             }}
             onMouseLeave={(e) => {
               if (page !== id) e.currentTarget.style.background = "transparent";
@@ -2233,7 +2369,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
       <div
         style={{
           padding: "16px 20px",
-          borderTop: "1px solid #0f1623",
+          borderTop: `1px solid ${theme.borderLight}`,
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -2245,7 +2381,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
             style={{
               fontSize: 13,
               fontWeight: 600,
-              color: "#e2e8f0",
+              color: theme.text,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -2256,7 +2392,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
           <div
             style={{
               fontSize: 11,
-              color: "#334155",
+              color: theme.textTertiary,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -2271,12 +2407,14 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
           style={{
             background: "none",
             border: "none",
-            color: "#334155",
+            color: theme.textTertiary,
             cursor: "pointer",
             fontSize: 16,
           }}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#f43f5e")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#334155")}
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.color = theme.textTertiary)
+          }
         >
           ⏏
         </button>
@@ -2305,6 +2443,24 @@ export default function App() {
       return [];
     }
   });
+  const [themeMode, setThemeMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem("spendly_theme");
+      return saved || "dark";
+    } catch {
+      return "dark";
+    }
+  });
+
+  const theme = THEMES[themeMode];
+
+  function toggleTheme() {
+    setThemeMode((prev) => {
+      const newMode = prev === "dark" ? "light" : "dark";
+      localStorage.setItem("spendly_theme", newMode);
+      return newMode;
+    });
+  }
 
   useEffect(() => {
     // Check for saved token and restore session if valid
@@ -2387,17 +2543,17 @@ export default function App() {
       style={{
         display: "flex",
         minHeight: "100vh",
-        background: "#07090f",
+        background: theme.bg,
         fontFamily: "'DM Sans',sans-serif",
-        color: "#f1f5f9",
+        color: theme.text,
       }}
     >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap');
         * { box-sizing:border-box; margin:0; padding:0; }
         ::-webkit-scrollbar { width:6px; }
-        ::-webkit-scrollbar-track { background:#07090f; }
-        ::-webkit-scrollbar-thumb { background:#1e2d47; border-radius:3px; }
+        ::-webkit-scrollbar-track { background:${theme.bg}; }
+        ::-webkit-scrollbar-thumb { background:${theme.border}; border-radius:3px; }
       `}</style>
 
       <Sidebar
@@ -2406,9 +2562,56 @@ export default function App() {
         user={user}
         onSignOut={signOut}
         onAdd={() => setModal(true)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
-      <main style={{ flex: 1, overflowY: "auto", minHeight: "100vh" }}>
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          minHeight: "100vh",
+          background: theme.bg,
+          position: "relative",
+        }}
+      >
+        {/* Theme toggle — upper right */}
+        <button
+          onClick={toggleTheme}
+          title={
+            theme.mode === "dark"
+              ? "Switch to light mode"
+              : "Switch to dark mode"
+          }
+          style={{
+            position: "fixed",
+            top: 18,
+            right: 24,
+            zIndex: 900,
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 12,
+            width: 42,
+            height: 42,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            fontSize: 20,
+            boxShadow: `0 4px 16px ${theme.mode === "dark" ? "rgba(0,0,0,.4)" : "rgba(0,0,0,.1)"}`,
+            transition: "all 0.2s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = theme.cardBgHover;
+            e.currentTarget.style.transform = "scale(1.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = theme.cardBg;
+            e.currentTarget.style.transform = "scale(1)";
+          }}
+        >
+          {theme.mode === "dark" ? "☀️" : "🌙"}
+        </button>
         {page === "home" && (
           <HomePage
             expenses={expenses}
@@ -2416,6 +2619,7 @@ export default function App() {
             onDelete={deleteExpense}
             categories={categories}
             stats={stats}
+            theme={theme}
           />
         )}
         {page === "expenses" && (
@@ -2423,6 +2627,7 @@ export default function App() {
             expenses={expenses}
             onDelete={deleteExpense}
             categories={categories}
+            theme={theme}
           />
         )}
         {page === "income" && (
@@ -2430,6 +2635,7 @@ export default function App() {
             incomes={incomes}
             onAdd={addIncome}
             onDelete={deleteIncome}
+            theme={theme}
           />
         )}
         {page === "visualise" && (
@@ -2437,6 +2643,7 @@ export default function App() {
             expenses={expenses}
             categories={categories}
             incomes={incomes}
+            theme={theme}
           />
         )}
       </main>

@@ -26,6 +26,7 @@ type Expense struct {
 	Amount      float64 `json:"amount"`
 	Date        string  `json:"date"`
 	Note        string  `json:"note"`
+	TxnType     string  `json:"txnType"` // "debit" or "credit"
 }
 
 type User struct {
@@ -46,6 +47,8 @@ type ExpenseStats struct {
 	ThisMonth        float64 `json:"thisMonth"`
 	TopCategory      string  `json:"topCategory"`
 	TopCategoryEmoji string  `json:"topCategoryEmoji"`
+	TotalCredit      float64 `json:"totalCredit"`
+	ThisMonthCredit  float64 `json:"thisMonthCredit"`
 }
 
 // ── Globals ────────────────────────────────────────────────────────
@@ -92,6 +95,11 @@ var (
 			Name:          "Travel",
 			Emoji:         "✈️",
 			Subcategories: []string{"Hotels", "Flights", "Activities", "Food Abroad", "Souvenirs", "Visas"},
+		},
+		"💰 Misc": {
+			Name:          "Misc",
+			Emoji:         "💰",
+			Subcategories: []string{"Home-Parents", "Partner", "Gifts", "Donations", "Tips", "Pet Care", "Cleaning", "Other"},
 		},
 	}
 )
@@ -238,7 +246,7 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	rows, err := db.Query(context.Background(), "SELECT id, title, amount, category, expense_date FROM expenses WHERE user_id=$1 ORDER BY expense_date DESC", userID)
+	rows, err := db.Query(context.Background(), "SELECT id, title, amount, category, expense_date, txn_type FROM expenses WHERE user_id=$1 ORDER BY expense_date DESC", userID)
 	if err != nil {
 		http.Error(w, "Failed to fetch expenses", http.StatusInternalServerError)
 		return
@@ -250,13 +258,19 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		var exp Expense
 		var t time.Time
 		var category *string
+		var txnType *string
 
-		if err := rows.Scan(&exp.ID, &exp.Title, &exp.Amount, &category, &t); err != nil {
+		if err := rows.Scan(&exp.ID, &exp.Title, &exp.Amount, &category, &t, &txnType); err != nil {
 			log.Println("Scan error:", err)
 			continue
 		}
 		if category != nil {
 			exp.Category = *category
+		}
+		if txnType != nil {
+			exp.TxnType = *txnType
+		} else {
+			exp.TxnType = "debit"
 		}
 		exp.Date = t.Format("2006-01-02")
 		// Fallbacks for missing columns in DB schema to avoid empty properties on frontend
@@ -289,11 +303,15 @@ func addExpenseHandler(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value(userContextKey).(int64)
 
+	if exp.TxnType == "" {
+		exp.TxnType = "debit"
+	}
+
 	err := db.QueryRow(context.Background(), `
-		INSERT INTO expenses (user_id, title, amount, category, expense_date)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO expenses (user_id, title, amount, category, expense_date, txn_type)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
-	`, userID, exp.Title, exp.Amount, exp.Category, exp.Date).Scan(&exp.ID)
+	`, userID, exp.Title, exp.Amount, exp.Category, exp.Date, exp.TxnType).Scan(&exp.ID)
 
 	if err != nil {
 		log.Println("Insert error:", err)
@@ -345,16 +363,27 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(userContextKey).(int64)
 
 	var total, thisMonth float64
+	var totalCredit, thisMonthCredit float64
 	currentMonthStart := time.Now().Format("2006-01") + "-01"
 
-	err := db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id=$1", userID).Scan(&total)
+	err := db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id=$1 AND (txn_type IS NULL OR txn_type='debit')", userID).Scan(&total)
 	if err != nil {
 		log.Println("Total query error:", err)
 	}
 
-	err = db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE expense_date >= $1 AND user_id=$2", currentMonthStart, userID).Scan(&thisMonth)
+	err = db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE expense_date >= $1 AND user_id=$2 AND (txn_type IS NULL OR txn_type='debit')", currentMonthStart, userID).Scan(&thisMonth)
 	if err != nil {
 		log.Println("This month query error:", err)
+	}
+
+	err = db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id=$1 AND txn_type='credit'", userID).Scan(&totalCredit)
+	if err != nil {
+		log.Println("Total credit query error:", err)
+	}
+
+	err = db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE expense_date >= $1 AND user_id=$2 AND txn_type='credit'", currentMonthStart, userID).Scan(&thisMonthCredit)
+	if err != nil {
+		log.Println("This month credit query error:", err)
 	}
 
 	var topCat string
@@ -380,6 +409,8 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 		ThisMonth:        thisMonth,
 		TopCategory:      topCat,
 		TopCategoryEmoji: emoji,
+		TotalCredit:      totalCredit,
+		ThisMonthCredit:  thisMonthCredit,
 	}
 
 	json.NewEncoder(w).Encode(stats)
@@ -439,6 +470,14 @@ func main() {
 	}
 	defer db.Close()
 	fmt.Println("Connected to expense_tracker!")
+
+	// Auto-migrate: add txn_type column if missing
+	_, err = db.Exec(context.Background(), `
+		ALTER TABLE expenses ADD COLUMN IF NOT EXISTS txn_type TEXT NOT NULL DEFAULT 'debit'
+	`)
+	if err != nil {
+		log.Printf("Warning: could not add txn_type column: %v\n", err)
+	}
 
 	// Ensure our dummy user exists for foreign key constraints
 	_, err = db.Exec(context.Background(), `
