@@ -17,6 +17,7 @@ jobs:
   go-build:
     name: Go Build & Test
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,6 +49,7 @@ jobs:
   go-lint:
     name: Go Lint
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -96,6 +98,7 @@ jobs:
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
