@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import {
@@ -6,6 +6,7 @@ import {
   Pie,
   Cell,
   Tooltip,
+  Legend,
   BarChart,
   Bar,
   XAxis,
@@ -935,8 +936,705 @@ function ExpensesPage({ expenses, onDelete, categories }) {
   );
 }
 
+// ── MONTH PICKER ──────────────────────────────────────────────────────────────
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function MonthPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  const [selYear, selMonth] = value.split("-").map(Number);
+  const [viewYear, setViewYear] = useState(selYear);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function pick(m) {
+    onChange(`${viewYear}-${String(m).padStart(2, "0")}`);
+    setOpen(false);
+  }
+
+  const displayLabel = `${MONTH_LABELS[selMonth - 1]} ${selYear}`;
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => {
+          setViewYear(selYear);
+          setOpen(!open);
+        }}
+        style={{
+          width: "100%",
+          padding: "10px 12px",
+          background: "#0a0f1e",
+          border: "1px solid #1e2d47",
+          borderRadius: 10,
+          color: "#f1f5f9",
+          fontSize: 13,
+          fontFamily: "inherit",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          transition: "border-color .2s",
+          outline: "none",
+        }}
+        onFocus={(e) => (e.currentTarget.style.borderColor = "#22d3a0")}
+        onBlur={(e) => {
+          if (!open) e.currentTarget.style.borderColor = "#1e2d47";
+        }}
+      >
+        <span>{displayLabel}</span>
+        <span
+          style={{
+            fontSize: 10,
+            color: "#475569",
+            transition: "transform .2s",
+            transform: open ? "rotate(180deg)" : "rotate(0)",
+          }}
+        >
+          ▼
+        </span>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            width: 260,
+            background: "#111827",
+            border: "1px solid #1e2d47",
+            borderRadius: 14,
+            boxShadow: "0 16px 48px rgba(0,0,0,.55)",
+            zIndex: 999,
+            padding: "16px",
+            animation: "mpFadeIn .15s ease",
+          }}
+        >
+          <style>{`@keyframes mpFadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+          {/* Year nav */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 14,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setViewYear((y) => y - 1)}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                border: "none",
+                background: "#1a2236",
+                color: "#94a3b8",
+                fontSize: 14,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background .15s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#22d3a022")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "#1a2236")
+              }
+            >
+              ‹
+            </button>
+            <span
+              style={{
+                fontFamily: "'Syne',sans-serif",
+                fontWeight: 700,
+                fontSize: 15,
+                color: "#f1f5f9",
+                letterSpacing: 0.5,
+              }}
+            >
+              {viewYear}
+            </span>
+            <button
+              type="button"
+              onClick={() => setViewYear((y) => y + 1)}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                border: "none",
+                background: "#1a2236",
+                color: "#94a3b8",
+                fontSize: 14,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background .15s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#22d3a022")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "#1a2236")
+              }
+            >
+              ›
+            </button>
+          </div>
+
+          {/* Month grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 6,
+            }}
+          >
+            {MONTH_LABELS.map((label, i) => {
+              const monthNum = i + 1;
+              const isSelected = viewYear === selYear && monthNum === selMonth;
+              const isCurrent =
+                viewYear === new Date().getFullYear() &&
+                monthNum === new Date().getMonth() + 1;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => pick(monthNum)}
+                  style={{
+                    padding: "9px 0",
+                    borderRadius: 9,
+                    border: isSelected
+                      ? "1.5px solid #22d3a0"
+                      : isCurrent
+                        ? "1px solid #22d3a044"
+                        : "1px solid transparent",
+                    background: isSelected
+                      ? "linear-gradient(135deg,#22d3a022,#14b8a622)"
+                      : "transparent",
+                    color: isSelected ? "#22d3a0" : "#94a3b8",
+                    fontSize: 12,
+                    fontWeight: isSelected ? 700 : 500,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    transition: "all .15s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = "#ffffff0a";
+                      e.currentTarget.style.color = "#e2e8f0";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "#94a3b8";
+                    }
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick actions */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: 12,
+              paddingTop: 10,
+              borderTop: "1px solid #1e2d47",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                setViewYear(now.getFullYear());
+                pick(now.getMonth() + 1);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#22d3a0",
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                padding: "4px 8px",
+                borderRadius: 6,
+                transition: "background .15s",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#22d3a015")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              This month
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── INCOME PAGE ─────────────────────────────────────────────────────────────
+function IncomePage({ incomes, onAdd, onDelete }) {
+  const [form, setForm] = useState({
+    month: new Date().toISOString().slice(0, 7),
+    source: "",
+    amount: "",
+  });
+  const [error, setError] = useState("");
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonthTotal = incomes
+    .filter((i) => i.month === thisMonth)
+    .reduce((s, i) => s + i.amount, 0);
+  const allTimeTotal = incomes.reduce((s, i) => s + i.amount, 0);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (
+      !form.amount ||
+      isNaN(Number(form.amount)) ||
+      Number(form.amount) <= 0
+    ) {
+      setError("Enter a valid positive amount");
+      return;
+    }
+    onAdd({
+      id: Date.now(),
+      month: form.month,
+      source: form.source.trim() || "Income",
+      amount: Number(form.amount),
+    });
+    setForm({
+      month: new Date().toISOString().slice(0, 7),
+      source: "",
+      amount: "",
+    });
+    setError("");
+  }
+
+  const byMonth = {};
+  incomes.forEach((i) => {
+    if (!byMonth[i.month]) byMonth[i.month] = [];
+    byMonth[i.month].push(i);
+  });
+  const sortedMonths = Object.keys(byMonth).sort().reverse();
+
+  return (
+    <div style={{ padding: "32px 36px", maxWidth: 800, margin: "0 auto" }}>
+      <div
+        style={{
+          fontFamily: "'Syne',sans-serif",
+          fontSize: 28,
+          fontWeight: 800,
+          color: "#f1f5f9",
+          marginBottom: 8,
+        }}
+      >
+        Income
+      </div>
+      <div style={{ color: "#475569", marginBottom: 32 }}>
+        Track your monthly revenue &amp; earnings
+      </div>
+
+      {/* Stats */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+          marginBottom: 28,
+        }}
+      >
+        <div
+          style={{
+            background: "#0d1117",
+            border: "1px solid #1e2d47",
+            borderRadius: 16,
+            padding: "20px 24px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#475569",
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            This Month
+          </div>
+          <div
+            style={{
+              fontFamily: "'Syne',sans-serif",
+              fontSize: 26,
+              fontWeight: 800,
+              color: "#22d3a0",
+            }}
+          >
+            {fmt(thisMonthTotal)}
+          </div>
+        </div>
+        <div
+          style={{
+            background: "#0d1117",
+            border: "1px solid #1e2d47",
+            borderRadius: 16,
+            padding: "20px 24px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: "#475569",
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            Total Logged
+          </div>
+          <div
+            style={{
+              fontFamily: "'Syne',sans-serif",
+              fontSize: 26,
+              fontWeight: 800,
+              color: "#6366f1",
+            }}
+          >
+            {fmt(allTimeTotal)}
+          </div>
+        </div>
+      </div>
+
+      {/* Add form */}
+      <div
+        style={{
+          background: "#0d1117",
+          border: "1px solid #1e2d47",
+          borderRadius: 18,
+          padding: "24px 28px",
+          marginBottom: 28,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'Syne',sans-serif",
+            fontSize: 16,
+            fontWeight: 700,
+            color: "#f1f5f9",
+            marginBottom: 16,
+          }}
+        >
+          + Add Income Entry
+        </div>
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr auto",
+            gap: 12,
+            alignItems: "end",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#475569",
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Month
+            </div>
+            <MonthPicker
+              value={form.month}
+              onChange={(v) => setForm((f) => ({ ...f, month: v }))}
+            />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#475569",
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Source
+            </div>
+            <input
+              type="text"
+              placeholder="Salary, Freelance…"
+              value={form.source}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, source: e.target.value }))
+              }
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "#0a0f1e",
+                border: "1px solid #1e2d47",
+                borderRadius: 10,
+                color: "#f1f5f9",
+                fontSize: 13,
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+            />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#475569",
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Amount (₹)
+            </div>
+            <input
+              type="number"
+              placeholder="0"
+              value={form.amount}
+              min="0"
+              onChange={(e) =>
+                setForm((f) => ({ ...f, amount: e.target.value }))
+              }
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: "#0a0f1e",
+                border: "1px solid #1e2d47",
+                borderRadius: 10,
+                color: "#f1f5f9",
+                fontSize: 13,
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+            />
+          </div>
+          <button
+            type="submit"
+            style={{
+              padding: "10px 20px",
+              background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
+              border: "none",
+              borderRadius: 10,
+              color: "#0a0f1e",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              height: 40,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Add
+          </button>
+        </form>
+        {error && (
+          <div style={{ color: "#f43f5e", fontSize: 12, marginTop: 8 }}>
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Income list */}
+      {sortedMonths.length === 0 ? (
+        <div
+          style={{
+            textAlign: "center",
+            color: "#334155",
+            padding: "48px 0",
+            fontSize: 14,
+          }}
+        >
+          No income logged yet. Add your first entry above.
+        </div>
+      ) : (
+        sortedMonths.map((month) => {
+          const monthTotal = byMonth[month].reduce((s, i) => s + i.amount, 0);
+          const label = new Date(month + "-01").toLocaleDateString("en-IN", {
+            month: "long",
+            year: "numeric",
+          });
+          return (
+            <div key={month} style={{ marginBottom: 20 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 10,
+                  padding: "0 4px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#475569",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  {label}
+                </div>
+                <div
+                  style={{
+                    fontFamily: "'Syne',sans-serif",
+                    fontWeight: 800,
+                    color: "#22d3a0",
+                    fontSize: 15,
+                  }}
+                >
+                  {fmt(monthTotal)}
+                </div>
+              </div>
+              {byMonth[month].map((entry) => (
+                <div
+                  key={entry.id}
+                  style={{
+                    background: "#0d1117",
+                    border: "1px solid #1e2d47",
+                    borderRadius: 12,
+                    padding: "14px 18px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    marginBottom: 8,
+                    transition: "border-color .2s",
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.borderColor = "#22d3a040")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.borderColor = "#1e2d47")
+                  }
+                >
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 10,
+                      background: "#22d3a015",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 18,
+                      flexShrink: 0,
+                    }}
+                  >
+                    💰
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        color: "#e2e8f0",
+                        fontSize: 14,
+                      }}
+                    >
+                      {entry.source}
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: "#475569", marginTop: 2 }}
+                    >
+                      {label}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "'Syne',sans-serif",
+                      fontWeight: 800,
+                      color: "#22d3a0",
+                      fontSize: 15,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {fmt(entry.amount)}
+                  </div>
+                  <button
+                    onClick={() => onDelete(entry.id)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#334155",
+                      cursor: "pointer",
+                      fontSize: 16,
+                      padding: 4,
+                      lineHeight: 1,
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.color = "#f43f5e")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.color = "#334155")
+                    }
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 // ── VISUALISE PAGE ────────────────────────────────────────────────────────────
-function VisualisePage({ expenses, categories }) {
+function VisualisePage({ expenses, categories, incomes }) {
   const [dayView, setDayView] = useState("week");
 
   // Category totals
@@ -988,6 +1686,47 @@ function VisualisePage({ expenses, categories }) {
       }),
       value: v,
     }));
+
+  // Income vs Expense monthly comparison
+  const incomeMonthMap = {};
+  (incomes || []).forEach((inc) => {
+    incomeMonthMap[inc.month] = (incomeMonthMap[inc.month] || 0) + inc.amount;
+  });
+  const incVsExpMonths = [
+    ...new Set([...Object.keys(monthMap), ...Object.keys(incomeMonthMap)]),
+  ].sort();
+  const incVsExpData = incVsExpMonths.map((m) => ({
+    name: new Date(m + "-01").toLocaleDateString("en-IN", {
+      month: "short",
+      year: "2-digit",
+    }),
+    Income: incomeMonthMap[m] || 0,
+    Expenses: monthMap[m] || 0,
+  }));
+
+  const INCOME_EXP_TOOLTIP = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div
+        style={{
+          background: "#1a2236",
+          border: "1px solid #1e2d47",
+          borderRadius: 10,
+          padding: "10px 14px",
+          fontFamily: "'DM Sans',sans-serif",
+          fontSize: 13,
+          color: "#f1f5f9",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>{label}</div>
+        {payload.map((p) => (
+          <div key={p.name} style={{ color: p.fill, fontWeight: 600 }}>
+            {p.name}: {fmt(p.value)}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const CUSTOM_TOOLTIP = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
@@ -1274,6 +2013,77 @@ function VisualisePage({ expenses, categories }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Income vs Expenses */}
+      {(incomes || []).length > 0 && incVsExpData.length > 0 && (
+        <div
+          style={{
+            background: "#0d1117",
+            border: "1px solid #1e2d47",
+            borderRadius: 18,
+            padding: "24px 28px",
+            marginTop: 24,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Syne',sans-serif",
+              fontSize: 18,
+              fontWeight: 700,
+              color: "#f1f5f9",
+              marginBottom: 4,
+            }}
+          >
+            Income vs Expenses
+          </div>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>
+            Monthly income compared to spending
+          </div>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={incVsExpData} barSize={18} barGap={4}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#1e2d47"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="name"
+                tick={{ fill: "#475569", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: "#475569", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(v) =>
+                  `₹${v >= 1000 ? (v / 1000).toFixed(0) + "k" : v}`
+                }
+              />
+              <Tooltip
+                content={<INCOME_EXP_TOOLTIP />}
+                cursor={{ fill: "#ffffff06" }}
+              />
+              <Legend
+                wrapperStyle={{ paddingTop: 12 }}
+                formatter={(value) => (
+                  <span
+                    style={{
+                      color: value === "Income" ? "#22d3a0" : "#f43f5e",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {value}
+                  </span>
+                )}
+              />
+              <Bar dataKey="Income" fill="#22d3a0" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Expenses" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }
@@ -1283,6 +2093,7 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
   const nav = [
     { id: "home", icon: "🏠", label: "Homepage" },
     { id: "expenses", icon: "📋", label: "Expenses" },
+    { id: "income", icon: "💰", label: "Income" },
     { id: "visualise", icon: "📊", label: "Visualize" },
   ];
   return (
@@ -1302,7 +2113,11 @@ function Sidebar({ page, setPage, user, onSignOut, onAdd }) {
       {/* Brand */}
       <div
         onClick={() => setPage("home")}
-        style={{ padding: "28px 24px 20px", borderBottom: "1px solid #0f1623", cursor: "pointer" }}
+        style={{
+          padding: "28px 24px 20px",
+          borderBottom: "1px solid #0f1623",
+          cursor: "pointer",
+        }}
       >
         <div
           style={{
@@ -1478,6 +2293,14 @@ export default function App() {
     thisMonth: 0,
     topCategory: "",
   });
+  const [incomes, setIncomes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("spendly_incomes");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
     // Check for saved token and restore session if valid
@@ -1520,6 +2343,10 @@ export default function App() {
     if (user) refreshExpenses();
   }, [user]);
 
+  useEffect(() => {
+    localStorage.setItem("spendly_incomes", JSON.stringify(incomes));
+  }, [incomes]);
+
   function refreshExpenses() {
     if (!user) return;
     apiCall("/expenses").then(setExpenses).catch(console.error);
@@ -1533,6 +2360,14 @@ export default function App() {
     })
       .then(() => refreshExpenses())
       .catch(console.error);
+  }
+
+  function addIncome(entry) {
+    setIncomes((prev) => [...prev, entry]);
+  }
+
+  function deleteIncome(id) {
+    setIncomes((prev) => prev.filter((i) => i.id !== id));
   }
 
   function signOut() {
@@ -1586,8 +2421,19 @@ export default function App() {
             categories={categories}
           />
         )}
+        {page === "income" && (
+          <IncomePage
+            incomes={incomes}
+            onAdd={addIncome}
+            onDelete={deleteIncome}
+          />
+        )}
         {page === "visualise" && (
-          <VisualisePage expenses={expenses} categories={categories} />
+          <VisualisePage
+            expenses={expenses}
+            categories={categories}
+            incomes={incomes}
+          />
         )}
       </main>
 
