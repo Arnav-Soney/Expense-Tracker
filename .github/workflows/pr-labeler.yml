@@ -11,21 +11,25 @@ permissions:
 jobs:
   label:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Label PR based on files changed
         uses: actions/labeler@v5
+        continue-on-error: true
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           sync-labels: true
 
   size:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Label PR size
         uses: codelytv/pr-size-labeler@v1
+        continue-on-error: true
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           xs_label: "size/XS"
