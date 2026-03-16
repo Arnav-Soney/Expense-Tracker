@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     title       VARCHAR(200) NOT NULL,
     amount      NUMERIC(10, 2) NOT NULL,
     category    VARCHAR(100),
+    subcategory VARCHAR(100),
     expense_date DATE DEFAULT CURRENT_DATE,
     created_at  TIMESTAMP DEFAULT NOW()
 );
