@@ -1,0 +1,12 @@
+UPDATE expenses SET subcategory = 'Home-Parents' WHERE category LIKE '%Misc%';
+UPDATE expenses SET subcategory = 'Rent' WHERE title = 'Rent';
+UPDATE expenses SET subcategory = 'Groceries' WHERE title IN ('Milk', 'Grocery run');
+UPDATE expenses SET subcategory = 'Restaurants' WHERE title = 'Zomato dinner';
+UPDATE expenses SET subcategory = 'Fast Food' WHERE title = 'Dominos pizza';
+UPDATE expenses SET subcategory = 'Metro / Bus' WHERE title = 'Monthly metro pass';
+UPDATE expenses SET subcategory = 'Uber / Ola' WHERE title = 'Uber to airport';
+UPDATE expenses SET subcategory = 'Streaming' WHERE title = 'Netflix';
+UPDATE expenses SET subcategory = 'Gym' WHERE title = 'Gym membership';
+UPDATE expenses SET subcategory = 'Clothing' WHERE title = 'New hoodie';
+UPDATE expenses SET subcategory = 'Courses' WHERE title = 'AWS course';
+UPDATE expenses SET subcategory = 'Electricity' WHERE title = 'Electricity bill';

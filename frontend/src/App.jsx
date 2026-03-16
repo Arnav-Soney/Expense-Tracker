@@ -672,7 +672,7 @@ function ExpenseRow({ exp, onDelete, categories, theme }) {
           )}
         </div>
         <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
-          {exp.subcategory} · {dayLabel(exp.date)}
+          {exp.subcategory ? `${exp.subcategory} · ` : ""}{dayLabel(exp.date)}
         </div>
       </div>
       <div
@@ -1762,32 +1762,650 @@ function IncomePage({ incomes, onAdd, onDelete, theme }) {
   );
 }
 
+// ── RECEIVABLES PAGE ──────────────────────────────────────────────────────────
+function ReceivablesPage({ receivables, onAdd, onUpdate, onDelete, theme }) {
+  const [form, setForm] = useState({
+    person: "",
+    amount: "",
+    description: "",
+    date: today(),
+  });
+  const [error, setError] = useState("");
+
+  const totalToReceive = receivables
+    .filter((r) => !r.received)
+    .reduce((sum, r) => sum + (r.amount - r.amountReceived), 0);
+
+  const totalReceived = receivables.reduce(
+    (sum, r) => sum + r.amountReceived,
+    0
+  );
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.person.trim()) {
+      setError("Enter person/source name");
+      return;
+    }
+    if (
+      !form.amount ||
+      isNaN(Number(form.amount)) ||
+      Number(form.amount) <= 0
+    ) {
+      setError("Enter a valid positive amount");
+      return;
+    }
+    onAdd({
+      id: Date.now().toString(),
+      person: form.person.trim(),
+      amount: Number(form.amount),
+      amountReceived: 0,
+      description: form.description.trim(),
+      date: form.date,
+      received: false,
+    });
+    setForm({ person: "", amount: "", description: "", date: today() });
+    setError("");
+  }
+
+  function handlePayment(receivable, paymentAmount) {
+    const newAmountReceived = receivable.amountReceived + paymentAmount;
+    const isFullyPaid = newAmountReceived >= receivable.amount;
+    onUpdate({
+      ...receivable,
+      amountReceived: Math.min(newAmountReceived, receivable.amount),
+      received: isFullyPaid,
+    });
+  }
+
+  return (
+    <div style={{ padding: "32px 36px", maxWidth: 900, margin: "0 auto" }}>
+      <div
+        style={{
+          fontFamily: "'Syne',sans-serif",
+          fontSize: 28,
+          fontWeight: 800,
+          color: theme.text,
+          marginBottom: 8,
+        }}
+      >
+        💵 Receive Money
+      </div>
+      <div style={{ color: theme.textSecondary, marginBottom: 28 }}>
+        Track money you're expecting to receive
+      </div>
+
+      {/* Stats */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2,1fr)",
+          gap: 16,
+          marginBottom: 28,
+        }}
+      >
+        <div
+          style={{
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 16,
+            padding: "20px 24px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: theme.textSecondary,
+              textTransform: "uppercase",
+              letterSpacing: 0.8,
+              marginBottom: 8,
+            }}
+          >
+            To Receive
+          </div>
+          <div
+            style={{
+              fontFamily: "'Syne',sans-serif",
+              fontWeight: 800,
+              fontSize: 28,
+              color: "#f59e0b",
+            }}
+          >
+            {fmt(totalToReceive)}
+          </div>
+        </div>
+        <div
+          style={{
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 16,
+            padding: "20px 24px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: theme.textSecondary,
+              textTransform: "uppercase",
+              letterSpacing: 0.8,
+              marginBottom: 8,
+            }}
+          >
+            Already Received
+          </div>
+          <div
+            style={{
+              fontFamily: "'Syne',sans-serif",
+              fontWeight: 800,
+              fontSize: 28,
+              color: theme.accent,
+            }}
+          >
+            {fmt(totalReceived)}
+          </div>
+        </div>
+      </div>
+
+      {/* Add Form */}
+      <div
+        style={{
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 16,
+          padding: "24px 28px",
+          marginBottom: 28,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'Syne',sans-serif",
+            fontSize: 16,
+            fontWeight: 700,
+            color: theme.text,
+            marginBottom: 16,
+          }}
+        >
+          + Add Receivable Entry
+        </div>
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1.5fr 1fr 2fr 1fr auto",
+            gap: 12,
+            alignItems: "end",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: theme.textSecondary,
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Person / Source
+            </div>
+            <input
+              type="text"
+              placeholder="John Doe"
+              value={form.person}
+              onChange={(e) => setForm((f) => ({ ...f, person: e.target.value }))}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 10,
+                color: theme.text,
+                fontSize: 13,
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+            />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: theme.textSecondary,
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Amount (₹)
+            </div>
+            <input
+              type="number"
+              placeholder="0"
+              value={form.amount}
+              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 10,
+                color: theme.text,
+                fontSize: 13,
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+            />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: theme.textSecondary,
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Description
+            </div>
+            <input
+              type="text"
+              placeholder="Payment for services..."
+              value={form.description}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, description: e.target.value }))
+              }
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 10,
+                color: theme.text,
+                fontSize: 13,
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+            />
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                color: theme.textSecondary,
+                fontWeight: 600,
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+              }}
+            >
+              Date
+            </div>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 10,
+                color: theme.text,
+                fontSize: 13,
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+            />
+          </div>
+          <button
+            type="submit"
+            style={{
+              padding: "10px 24px",
+              background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
+              border: "none",
+              borderRadius: 10,
+              color: "#0a0f1e",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            Add
+          </button>
+        </form>
+        {error && (
+          <div style={{ color: "#f43f5e", fontSize: 12, marginTop: 10 }}>
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Receivables List */}
+      <div>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: theme.textSecondary,
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+            marginBottom: 14,
+          }}
+        >
+          Pending Receivables ({receivables.filter((r) => !r.received).length})
+        </div>
+        {receivables.filter((r) => !r.received).length === 0 ? (
+          <div
+            style={{
+              color: theme.textSecondary,
+              fontSize: 14,
+              textAlign: "center",
+              padding: "40px 0",
+            }}
+          >
+            No pending receivables
+          </div>
+        ) : (
+          receivables
+            .filter((r) => !r.received)
+            .map((r) => (
+              <ReceivableRow
+                key={r.id}
+                receivable={r}
+                onPayment={handlePayment}
+                onDelete={onDelete}
+                theme={theme}
+              />
+            ))
+        )}
+
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: theme.textSecondary,
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+            marginTop: 32,
+            marginBottom: 14,
+          }}
+        >
+          Completed ({receivables.filter((r) => r.received).length})
+        </div>
+        {receivables
+          .filter((r) => r.received)
+          .map((r) => (
+            <ReceivableRow
+              key={r.id}
+              receivable={r}
+              onPayment={handlePayment}
+              onDelete={onDelete}
+              theme={theme}
+            />
+          ))}
+      </div>
+    </div>
+  );
+}
+
+function ReceivableRow({ receivable, onPayment, onDelete, theme }) {
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  
+  const remaining = receivable.amount - receivable.amountReceived;
+  const progress = (receivable.amountReceived / receivable.amount) * 100;
+
+  function handlePayment() {
+    const amount = Number(paymentAmount);
+    if (amount > 0 && amount <= remaining) {
+      onPayment(receivable, amount);
+      setPaymentAmount("");
+      setShowPayment(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        background: theme.cardBg,
+        border: `1px solid ${theme.border}`,
+        borderRadius: 14,
+        padding: "18px 22px",
+        marginBottom: 12,
+        opacity: receivable.received ? 0.6 : 1,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+        <input
+          type="checkbox"
+          checked={receivable.received}
+          onChange={() => {
+            if (!receivable.received && remaining > 0) {
+              onPayment(receivable, remaining);
+            }
+          }}
+          style={{
+            width: 20,
+            height: 20,
+            cursor: "pointer",
+            marginTop: 2,
+            accentColor: theme.accent,
+          }}
+        />
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <div>
+              <div
+                style={{
+                  fontWeight: 700,
+                  color: theme.text,
+                  fontSize: 15,
+                  marginBottom: 4,
+                }}
+              >
+                {receivable.person}
+              </div>
+              <div style={{ fontSize: 12, color: theme.textSecondary }}>
+                {receivable.description} · {dayLabel(receivable.date)}
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div
+                style={{
+                  fontFamily: "'Syne',sans-serif",
+                  fontWeight: 800,
+                  fontSize: 18,
+                  color: receivable.received ? theme.accent : "#f59e0b",
+                }}
+              >
+                {fmt(remaining)}
+              </div>
+              <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>
+                of {fmt(receivable.amount)}
+              </div>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          {receivable.amountReceived > 0 && (
+            <div
+              style={{
+                height: 6,
+                background: theme.inputBg,
+                borderRadius: 3,
+                overflow: "hidden",
+                marginTop: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progress}%`,
+                  background: `linear-gradient(90deg, ${theme.accent}, #14b8a6)`,
+                  transition: "width 0.3s",
+                }}
+              />
+            </div>
+          )}
+
+          {/* Payment Actions */}
+          {!receivable.received && (
+            <div style={{ marginTop: 10 }}>
+              {!showPayment ? (
+                <button
+                  onClick={() => setShowPayment(true)}
+                  style={{
+                    padding: "6px 14px",
+                    background: "none",
+                    border: `1px solid ${theme.accent}`,
+                    borderRadius: 8,
+                    color: theme.accent,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Record Payment
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="number"
+                    placeholder={`Max: ${remaining}`}
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    style={{
+                      width: 150,
+                      padding: "6px 10px",
+                      background: theme.inputBg,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      color: theme.text,
+                      fontSize: 12,
+                      fontFamily: "inherit",
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    onClick={handlePayment}
+                    style={{
+                      padding: "6px 14px",
+                      background: theme.accent,
+                      border: "none",
+                      borderRadius: 8,
+                      color: "#0a0f1e",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPayment(false);
+                      setPaymentAmount("");
+                    }}
+                    style={{
+                      padding: "6px 14px",
+                      background: "none",
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      color: theme.textSecondary,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={() => onDelete(receivable.id)}
+          style={{
+            background: "none",
+            border: "none",
+            color: theme.textTertiary,
+            cursor: "pointer",
+            fontSize: 16,
+            padding: 4,
+            lineHeight: 1,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#f43f5e")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = theme.textTertiary)}
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+
 // ── VISUALISE PAGE ────────────────────────────────────────────────────────────
 function VisualisePage({ expenses, categories, incomes, theme }) {
   const [dayView, setDayView] = useState("week");
+  const [selectedMonth, setSelectedMonth] = useState("all");
 
-  // Category totals
+  // Get list of unique months from expenses
+  const availableMonths = ["all", ...new Set(expenses.map(e => e.date.slice(0, 7)))].sort().reverse();
+
+  // Filter expenses by selected month
+  const filteredExpenses = selectedMonth === "all"
+    ? expenses
+    : expenses.filter(e => e.date.startsWith(selectedMonth));
+
+  // Category totals with subcategory breakdown
   const catTotals = {};
-  expenses.forEach((e) => {
+  const catSubcatTotals = {};
+  filteredExpenses.forEach((e) => {
     catTotals[e.category] = (catTotals[e.category] || 0) + e.amount;
+    if (!catSubcatTotals[e.category]) {
+      catSubcatTotals[e.category] = {};
+    }
+    // Handle empty/undefined subcategory - label as "Uncategorized"
+    const subcatKey = e.subcategory && e.subcategory.trim() ? e.subcategory : "Uncategorized";
+    catSubcatTotals[e.category][subcatKey] =
+      (catSubcatTotals[e.category][subcatKey] || 0) + e.amount;
   });
   const total = Object.values(catTotals).reduce((s, v) => s + v, 0);
 
   const piePercent = Object.entries(catTotals).map(([name, value], i) => ({
     name: name.split(" ").slice(1).join(" "),
+    fullName: name,
     value: Math.round((value / total) * 100),
+    absoluteValue: value,
     color: CAT_COLORS[i % CAT_COLORS.length],
+    subcategories: catSubcatTotals[name],
   }));
 
   const pieAbs = Object.entries(catTotals).map(([name, value], i) => ({
     name: name.split(" ").slice(1).join(" "),
+    fullName: name,
     value,
     color: CAT_COLORS[i % CAT_COLORS.length],
+    subcategories: catSubcatTotals[name],
   }));
 
   // Day-wise bar
   const dayMap = {};
-  expenses.forEach((e) => {
+  filteredExpenses.forEach((e) => {
     dayMap[e.date] = (dayMap[e.date] || 0) + e.amount;
   });
   const allDates = Object.keys(dayMap).sort();
@@ -1802,7 +2420,7 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
 
   // Month-wise bar
   const monthMap = {};
-  expenses.forEach((e) => {
+  filteredExpenses.forEach((e) => {
     const m = e.date.slice(0, 7);
     monthMap[m] = (monthMap[m] || 0) + e.amount;
   });
@@ -1859,24 +2477,99 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
 
   const CUSTOM_TOOLTIP = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
+    const data = payload[0].payload;
+    
+    // Get the full category name to look up subcategories
+    // Try multiple approaches to find the right key
+    let subcats = {};
+    
+    // First try with fullName if it exists
+    if (data.fullName && catSubcatTotals[data.fullName]) {
+      subcats = catSubcatTotals[data.fullName];
+    } else {
+      // Try to find by matching the display name
+      const displayName = data.name || payload[0].name;
+      // Look for a category that contains this display name
+      for (const [catKey, subObj] of Object.entries(catSubcatTotals)) {
+        if (catKey.includes(displayName)) {
+          subcats = subObj;
+          break;
+        }
+      }
+    }
+    
+    // Filter out any invalid subcategory keys and sort by amount
+    const subcatEntries = Object.entries(subcats)
+      .filter(([key]) => key && key !== "undefined" && key !== "null")
+      .sort((a, b) => b[1] - a[1]);
+    
+    // Calculate total for percentages
+    const subcatTotal = subcatEntries.reduce((sum, [, val]) => sum + val, 0);
+    
     return (
       <div
         style={{
           background: theme.cardBg,
           border: `1px solid ${theme.border}`,
-          borderRadius: 10,
-          padding: "10px 14px",
+          borderRadius: 12,
+          padding: "12px 16px",
           fontFamily: "'DM Sans',sans-serif",
           fontSize: 13,
           color: theme.text,
+          maxWidth: 280,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ fontWeight: 700 }}>{payload[0].name}</div>
-        <div style={{ color: "#22d3a0", fontWeight: 600 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 14 }}>
+          {payload[0].name}
+        </div>
+        <div style={{ color: theme.accent, fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
           {typeof payload[0].value === "number" && payload[0].value > 100
             ? fmt(payload[0].value)
             : `${payload[0].value}${typeof payload[0].value === "number" && payload[0].value < 100 ? "%" : ""}`}
         </div>
+        
+        {subcatEntries.length > 0 && (
+          <>
+            <div
+              style={{
+                borderTop: `1px solid ${theme.border}`,
+                marginTop: 8,
+                paddingTop: 8,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: theme.textSecondary,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginBottom: 6,
+                }}
+              >
+                Breakdown
+              </div>
+              {subcatEntries.map(([subcat, amount]) => (
+                <div
+                  key={subcat}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "4px 0",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ color: theme.textSecondary }}>{subcat}</span>
+                  <span style={{ fontWeight: 600, color: theme.text, marginLeft: 12 }}>
+                    {fmt(amount)} <span style={{ color: theme.accent, fontSize: 11 }}>({Math.round((amount / subcatTotal) * 100)}%)</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -1894,8 +2587,52 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
       >
         Visualise
       </div>
-      <div style={{ color: theme.textSecondary, marginBottom: 32 }}>
+      <div style={{ color: theme.textSecondary, marginBottom: 20 }}>
         Charts & spending patterns
+      </div>
+
+      {/* Month Selector */}
+      <div style={{ marginBottom: 32 }}>
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 600,
+            color: theme.textSecondary,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            marginBottom: 8,
+          }}
+        >
+          Filter by Month
+        </label>
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          style={{
+            padding: "10px 14px",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 10,
+            color: theme.text,
+            fontSize: 14,
+            fontWeight: 500,
+            fontFamily: "inherit",
+            cursor: "pointer",
+            outline: "none",
+            minWidth: 200,
+          }}
+        >
+          <option value="all">All Time</option>
+          {availableMonths.filter(m => m !== "all").map((month) => (
+            <option key={month} value={month}>
+              {new Date(month + "-01").toLocaleDateString("en-IN", {
+                month: "long",
+                year: "numeric",
+              })}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Pie charts row */}
@@ -2231,6 +2968,7 @@ function Sidebar({
     { id: "home", icon: "🏠", label: "Homepage" },
     { id: "expenses", icon: "📋", label: "Expenses" },
     { id: "income", icon: "💰", label: "Income" },
+    { id: "receivables", icon: "💵", label: "Receive Money" },
     { id: "visualise", icon: "📊", label: "Visualize" },
   ];
   return (
@@ -2443,6 +3181,14 @@ export default function App() {
       return [];
     }
   });
+  const [receivables, setReceivables] = useState(() => {
+    try {
+      const saved = localStorage.getItem("spendly_receivables");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [themeMode, setThemeMode] = useState(() => {
     try {
       const saved = localStorage.getItem("spendly_theme");
@@ -2507,6 +3253,10 @@ export default function App() {
     localStorage.setItem("spendly_incomes", JSON.stringify(incomes));
   }, [incomes]);
 
+  useEffect(() => {
+    localStorage.setItem("spendly_receivables", JSON.stringify(receivables));
+  }, [receivables]);
+
   function refreshExpenses() {
     if (!user) return;
     apiCall("/expenses").then(setExpenses).catch(console.error);
@@ -2528,6 +3278,18 @@ export default function App() {
 
   function deleteIncome(id) {
     setIncomes((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  function addReceivable(entry) {
+    setReceivables((prev) => [...prev, entry]);
+  }
+
+  function updateReceivable(updated) {
+    setReceivables((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  }
+
+  function deleteReceivable(id) {
+    setReceivables((prev) => prev.filter((r) => r.id !== id));
   }
 
   function signOut() {
@@ -2635,6 +3397,15 @@ export default function App() {
             incomes={incomes}
             onAdd={addIncome}
             onDelete={deleteIncome}
+            theme={theme}
+          />
+        )}
+        {page === "receivables" && (
+          <ReceivablesPage
+            receivables={receivables}
+            onAdd={addReceivable}
+            onUpdate={updateReceivable}
+            onDelete={deleteReceivable}
             theme={theme}
           />
         )}

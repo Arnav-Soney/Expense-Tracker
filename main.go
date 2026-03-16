@@ -246,7 +246,7 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	rows, err := db.Query(context.Background(), "SELECT id, title, amount, category, expense_date, txn_type FROM expenses WHERE user_id=$1 ORDER BY expense_date DESC", userID)
+	rows, err := db.Query(context.Background(), "SELECT id, title, amount, category, subcategory, expense_date, txn_type FROM expenses WHERE user_id=$1 ORDER BY expense_date DESC", userID)
 	if err != nil {
 		http.Error(w, "Failed to fetch expenses", http.StatusInternalServerError)
 		return
@@ -258,14 +258,18 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 		var exp Expense
 		var t time.Time
 		var category *string
+		var subcategory *string
 		var txnType *string
 
-		if err := rows.Scan(&exp.ID, &exp.Title, &exp.Amount, &category, &t, &txnType); err != nil {
+		if err := rows.Scan(&exp.ID, &exp.Title, &exp.Amount, &category, &subcategory, &t, &txnType); err != nil {
 			log.Println("Scan error:", err)
 			continue
 		}
 		if category != nil {
 			exp.Category = *category
+		}
+		if subcategory != nil {
+			exp.Subcategory = *subcategory
 		}
 		if txnType != nil {
 			exp.TxnType = *txnType
@@ -273,8 +277,6 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 			exp.TxnType = "debit"
 		}
 		exp.Date = t.Format("2006-01-02")
-		// Fallbacks for missing columns in DB schema to avoid empty properties on frontend
-		exp.Subcategory = ""
 		exp.Note = ""
 		exps = append(exps, &exp)
 	}
@@ -308,10 +310,10 @@ func addExpenseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := db.QueryRow(context.Background(), `
-		INSERT INTO expenses (user_id, title, amount, category, expense_date, txn_type)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO expenses (user_id, title, amount, category, subcategory, expense_date, txn_type)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, userID, exp.Title, exp.Amount, exp.Category, exp.Date, exp.TxnType).Scan(&exp.ID)
+	`, userID, exp.Title, exp.Amount, exp.Category, exp.Subcategory, exp.Date, exp.TxnType).Scan(&exp.ID)
 
 	if err != nil {
 		log.Println("Insert error:", err)
