@@ -266,7 +266,7 @@ function AuthPage({ onAuth }) {
 }
 
 // ── ADD EXPENSE MODAL ─────────────────────────────────────────────────────────
-function AddExpenseModal({ onClose, onAdd, categories }) {
+function AddExpenseModal({ onClose, onAdd, onAddReceivable, categories }) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [subcategory, setSubcategory] = useState("");
@@ -297,6 +297,20 @@ function AddExpenseModal({ onClose, onAdd, categories }) {
           txnType,
         }),
       });
+
+      // If it's a credit (To Receive) transaction, also add it to receivables
+      if (txnType === "credit" && onAddReceivable) {
+        onAddReceivable({
+          id: Date.now().toString(),
+          person: title,
+          amount: parseFloat(amount),
+          amountReceived: 0,
+          description: `${category} - ${subcategory}`,
+          date,
+          received: false,
+        });
+      }
+
       onAdd();
       onClose();
     } catch (err) {
@@ -672,7 +686,8 @@ function ExpenseRow({ exp, onDelete, categories, theme }) {
           )}
         </div>
         <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>
-          {exp.subcategory ? `${exp.subcategory} · ` : ""}{dayLabel(exp.date)}
+          {exp.subcategory ? `${exp.subcategory} · ` : ""}
+          {dayLabel(exp.date)}
         </div>
       </div>
       <div
@@ -1136,7 +1151,9 @@ function MonthPicker({ value, onChange, theme }) {
         }}
       >
         <span>{displayLabel}</span>
-        <span style={{ fontSize: 15, color: theme.textSecondary, lineHeight: 1 }}>
+        <span
+          style={{ fontSize: 15, color: theme.textSecondary, lineHeight: 1 }}
+        >
           📅
         </span>
       </button>
@@ -1152,7 +1169,10 @@ function MonthPicker({ value, onChange, theme }) {
             background: theme.cardBg,
             border: `1px solid ${theme.border}`,
             borderRadius: 14,
-            boxShadow: theme.mode === 'dark' ? "0 16px 48px rgba(0,0,0,.55)" : "0 16px 48px rgba(0,0,0,.15)",
+            boxShadow:
+              theme.mode === "dark"
+                ? "0 16px 48px rgba(0,0,0,.55)"
+                : "0 16px 48px rgba(0,0,0,.15)",
             zIndex: 999,
             padding: "16px",
             animation: "mpFadeIn .15s ease",
@@ -1778,7 +1798,7 @@ function ReceivablesPage({ receivables, onAdd, onUpdate, onDelete, theme }) {
 
   const totalReceived = receivables.reduce(
     (sum, r) => sum + r.amountReceived,
-    0
+    0,
   );
 
   function handleSubmit(e) {
@@ -1955,7 +1975,9 @@ function ReceivablesPage({ receivables, onAdd, onUpdate, onDelete, theme }) {
               type="text"
               placeholder="John Doe"
               value={form.person}
-              onChange={(e) => setForm((f) => ({ ...f, person: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, person: e.target.value }))
+              }
               style={{
                 width: "100%",
                 padding: "10px 12px",
@@ -1986,7 +2008,9 @@ function ReceivablesPage({ receivables, onAdd, onUpdate, onDelete, theme }) {
               type="number"
               placeholder="0"
               value={form.amount}
-              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, amount: e.target.value }))
+              }
               style={{
                 width: "100%",
                 padding: "10px 12px",
@@ -2158,7 +2182,7 @@ function ReceivablesPage({ receivables, onAdd, onUpdate, onDelete, theme }) {
 function ReceivableRow({ receivable, onPayment, onDelete, theme }) {
   const [showPayment, setShowPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
-  
+
   const remaining = receivable.amount - receivable.amountReceived;
   const progress = (receivable.amountReceived / receivable.amount) * 100;
 
@@ -2200,7 +2224,13 @@ function ReceivableRow({ receivable, onPayment, onDelete, theme }) {
           }}
         />
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 6,
+            }}
+          >
             <div>
               <div
                 style={{
@@ -2227,7 +2257,13 @@ function ReceivableRow({ receivable, onPayment, onDelete, theme }) {
               >
                 {fmt(remaining)}
               </div>
-              <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: theme.textSecondary,
+                  marginTop: 2,
+                }}
+              >
                 of {fmt(receivable.amount)}
               </div>
             </div>
@@ -2347,7 +2383,9 @@ function ReceivableRow({ receivable, onPayment, onDelete, theme }) {
             lineHeight: 1,
           }}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#f43f5e")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = theme.textTertiary)}
+          onMouseLeave={(e) =>
+            (e.currentTarget.style.color = theme.textTertiary)
+          }
         >
           ✕
         </button>
@@ -2356,20 +2394,24 @@ function ReceivableRow({ receivable, onPayment, onDelete, theme }) {
   );
 }
 
-
-
 // ── VISUALISE PAGE ────────────────────────────────────────────────────────────
 function VisualisePage({ expenses, categories, incomes, theme }) {
   const [dayView, setDayView] = useState("week");
   const [selectedMonth, setSelectedMonth] = useState("all");
 
   // Get list of unique months from expenses
-  const availableMonths = ["all", ...new Set(expenses.map(e => e.date.slice(0, 7)))].sort().reverse();
+  const availableMonths = [
+    "all",
+    ...new Set(expenses.map((e) => e.date.slice(0, 7))),
+  ]
+    .sort()
+    .reverse();
 
   // Filter expenses by selected month
-  const filteredExpenses = selectedMonth === "all"
-    ? expenses
-    : expenses.filter(e => e.date.startsWith(selectedMonth));
+  const filteredExpenses =
+    selectedMonth === "all"
+      ? expenses
+      : expenses.filter((e) => e.date.startsWith(selectedMonth));
 
   // Category totals with subcategory breakdown
   const catTotals = {};
@@ -2380,7 +2422,8 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
       catSubcatTotals[e.category] = {};
     }
     // Handle empty/undefined subcategory - label as "Uncategorized"
-    const subcatKey = e.subcategory && e.subcategory.trim() ? e.subcategory : "Uncategorized";
+    const subcatKey =
+      e.subcategory && e.subcategory.trim() ? e.subcategory : "Uncategorized";
     catSubcatTotals[e.category][subcatKey] =
       (catSubcatTotals[e.category][subcatKey] || 0) + e.amount;
   });
@@ -2478,11 +2521,11 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
   const CUSTOM_TOOLTIP = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
     const data = payload[0].payload;
-    
+
     // Get the full category name to look up subcategories
     // Try multiple approaches to find the right key
     let subcats = {};
-    
+
     // First try with fullName if it exists
     if (data.fullName && catSubcatTotals[data.fullName]) {
       subcats = catSubcatTotals[data.fullName];
@@ -2497,15 +2540,15 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
         }
       }
     }
-    
+
     // Filter out any invalid subcategory keys and sort by amount
     const subcatEntries = Object.entries(subcats)
       .filter(([key]) => key && key !== "undefined" && key !== "null")
       .sort((a, b) => b[1] - a[1]);
-    
+
     // Calculate total for percentages
     const subcatTotal = subcatEntries.reduce((sum, [, val]) => sum + val, 0);
-    
+
     return (
       <div
         style={{
@@ -2523,12 +2566,19 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
         <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 14 }}>
           {payload[0].name}
         </div>
-        <div style={{ color: theme.accent, fontWeight: 700, fontSize: 16, marginBottom: 8 }}>
+        <div
+          style={{
+            color: theme.accent,
+            fontWeight: 700,
+            fontSize: 16,
+            marginBottom: 8,
+          }}
+        >
           {typeof payload[0].value === "number" && payload[0].value > 100
             ? fmt(payload[0].value)
             : `${payload[0].value}${typeof payload[0].value === "number" && payload[0].value < 100 ? "%" : ""}`}
         </div>
-        
+
         {subcatEntries.length > 0 && (
           <>
             <div
@@ -2562,8 +2612,17 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
                   }}
                 >
                   <span style={{ color: theme.textSecondary }}>{subcat}</span>
-                  <span style={{ fontWeight: 600, color: theme.text, marginLeft: 12 }}>
-                    {fmt(amount)} <span style={{ color: theme.accent, fontSize: 11 }}>({Math.round((amount / subcatTotal) * 100)}%)</span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: theme.text,
+                      marginLeft: 12,
+                    }}
+                  >
+                    {fmt(amount)}{" "}
+                    <span style={{ color: theme.accent, fontSize: 11 }}>
+                      ({Math.round((amount / subcatTotal) * 100)}%)
+                    </span>
                   </span>
                 </div>
               ))}
@@ -2624,14 +2683,16 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
           }}
         >
           <option value="all">All Time</option>
-          {availableMonths.filter(m => m !== "all").map((month) => (
-            <option key={month} value={month}>
-              {new Date(month + "-01").toLocaleDateString("en-IN", {
-                month: "long",
-                year: "numeric",
-              })}
-            </option>
-          ))}
+          {availableMonths
+            .filter((m) => m !== "all")
+            .map((month) => (
+              <option key={month} value={month}>
+                {new Date(month + "-01").toLocaleDateString("en-IN", {
+                  month: "long",
+                  year: "numeric",
+                })}
+              </option>
+            ))}
         </select>
       </div>
 
@@ -2663,7 +2724,13 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
           >
             Category Split
           </div>
-          <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.textSecondary,
+              marginBottom: 16,
+            }}
+          >
             Percentage breakdown
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -2704,7 +2771,13 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
           >
             Amounts by Category
           </div>
-          <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 16 }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.textSecondary,
+              marginBottom: 16,
+            }}
+          >
             Absolute values (₹)
           </div>
           <ResponsiveContainer width="100%" height={220}>
@@ -2760,7 +2833,9 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
             >
               Daily Spend
             </div>
-            <div style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}>
+            <div
+              style={{ fontSize: 13, color: theme.textSecondary, marginTop: 2 }}
+            >
               Expense amount per day
             </div>
           </div>
@@ -2842,7 +2917,9 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
         >
           Monthly Overview
         </div>
-        <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}>
+        <div
+          style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}
+        >
           Total spend per calendar month
         </div>
         <ResponsiveContainer width="100%" height={220}>
@@ -2902,7 +2979,13 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
           >
             Income vs Expenses
           </div>
-          <div style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 20 }}>
+          <div
+            style={{
+              fontSize: 13,
+              color: theme.textSecondary,
+              marginBottom: 20,
+            }}
+          >
             Monthly income compared to spending
           </div>
           <ResponsiveContainer width="100%" height={250}>
@@ -3285,7 +3368,9 @@ export default function App() {
   }
 
   function updateReceivable(updated) {
-    setReceivables((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    setReceivables((prev) =>
+      prev.map((r) => (r.id === updated.id ? updated : r)),
+    );
   }
 
   function deleteReceivable(id) {
@@ -3423,6 +3508,7 @@ export default function App() {
         <AddExpenseModal
           onClose={() => setModal(false)}
           onAdd={refreshExpenses}
+          onAddReceivable={addReceivable}
           categories={categories}
         />
       )}
