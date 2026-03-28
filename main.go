@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"expense-tracker/backend/model"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,62 +18,11 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// ── Data Models ────────────────────────────────────────────────────────────
-type Expense struct {
-	ID          int64   `json:"id"`
-	Title       string  `json:"title"`
-	Category    string  `json:"category"`
-	Subcategory string  `json:"subcategory"`
-	Amount      float64 `json:"amount"`
-	Date        string  `json:"date"`
-	Note        string  `json:"note"`
-	TxnType     string  `json:"txnType"` // "debit" or "credit"
-}
-
-type User struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Avatar string `json:"avatar"`
-}
-
-type CategoryInfo struct {
-	Name          string   `json:"name"`
-	Emoji         string   `json:"emoji"`
-	Subcategories []string `json:"subcategories"`
-}
-
-type ExpenseStats struct {
-	Total            float64 `json:"total"`
-	ThisMonth        float64 `json:"thisMonth"`
-	TopCategory      string  `json:"topCategory"`
-	TopCategoryEmoji string  `json:"topCategoryEmoji"`
-	TotalCredit      float64 `json:"totalCredit"`
-	ThisMonthCredit  float64 `json:"thisMonthCredit"`
-}
-
-type Income struct {
-	ID     int64   `json:"id"`
-	Month  string  `json:"month"` // e.g. "2026-03"
-	Source string  `json:"source"`
-	Amount float64 `json:"amount"`
-}
-
-type Receivable struct {
-	ID             int64   `json:"id"`
-	Person         string  `json:"person"`
-	Amount         float64 `json:"amount"`
-	AmountReceived float64 `json:"amountReceived"`
-	Description    string  `json:"description"`
-	Date           string  `json:"date"`
-	Received       bool    `json:"received"`
-}
-
 // ── Globals ────────────────────────────────────────────────────────
 var (
 	db *pgxpool.Pool
 
-	categories = map[string]CategoryInfo{
+	categories = map[string]model.CategoryInfo{
 		"🍔 Food & Dining": {
 			Name:          "Food & Dining",
 			Emoji:         "🍔",
@@ -220,7 +170,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var cats []CategoryInfo
+	var cats []model.CategoryInfo
 	for _, cat := range categories {
 		cats = append(cats, cat)
 	}
@@ -271,7 +221,7 @@ func authGoogleHandler(w http.ResponseWriter, r *http.Request) {
 	seedData(userID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(User{
+	json.NewEncoder(w).Encode(model.User{
 		ID:     fmt.Sprintf("%d", userID),
 		Name:   name,
 		Email:  email,
@@ -291,9 +241,9 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var exps []*Expense
+	var exps []*model.Expense
 	for rows.Next() {
-		var exp Expense
+		var exp model.Expense
 		var t time.Time
 		var category *string
 		var subcategory *string
@@ -320,7 +270,7 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if exps == nil {
-		exps = []*Expense{}
+		exps = []*model.Expense{}
 	}
 
 	json.NewEncoder(w).Encode(exps)
@@ -335,7 +285,7 @@ func addExpenseHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	var exp Expense
+	var exp model.Expense
 	if err := json.NewDecoder(r.Body).Decode(&exp); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -444,7 +394,7 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 		emoji = catInfo.Emoji
 	}
 
-	stats := ExpenseStats{
+	stats := model.ExpenseStats{
 		Total:            total,
 		ThisMonth:        thisMonth,
 		TopCategory:      topCat,
@@ -460,7 +410,7 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 func getUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	user := User{
+	user := model.User{
 		ID:     "1",
 		Name:   "Alex Rivera",
 		Email:  "alex@gmail.com",
@@ -490,7 +440,7 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request) {
 		avatar = strings.ToUpper(string(parts[0][0]))
 	}
 
-	json.NewEncoder(w).Encode(User{
+	json.NewEncoder(w).Encode(model.User{
 		ID:     fmt.Sprintf("%d", userID),
 		Name:   name,
 		Email:  email,
@@ -512,9 +462,9 @@ func getIncomesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var incomes []Income
+	var incomes []model.Income
 	for rows.Next() {
-		var inc Income
+		var inc model.Income
 		if err := rows.Scan(&inc.ID, &inc.Month, &inc.Source, &inc.Amount); err != nil {
 			log.Println("Income scan error:", err)
 			continue
@@ -523,7 +473,7 @@ func getIncomesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if incomes == nil {
-		incomes = []Income{}
+		incomes = []model.Income{}
 	}
 	json.NewEncoder(w).Encode(incomes)
 }
@@ -537,7 +487,7 @@ func addIncomeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	var inc Income
+	var inc model.Income
 	if err := json.NewDecoder(r.Body).Decode(&inc); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -607,9 +557,9 @@ func getReceivablesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var receivables []Receivable
+	var receivables []model.Receivable
 	for rows.Next() {
-		var rec Receivable
+		var rec model.Receivable
 		var dateVal time.Time
 		var desc *string
 		if err := rows.Scan(&rec.ID, &rec.Person, &rec.Amount, &rec.AmountReceived, &desc, &dateVal, &rec.Received); err != nil {
@@ -624,7 +574,7 @@ func getReceivablesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if receivables == nil {
-		receivables = []Receivable{}
+		receivables = []model.Receivable{}
 	}
 	json.NewEncoder(w).Encode(receivables)
 }
@@ -638,7 +588,7 @@ func addReceivableHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	var rec Receivable
+	var rec model.Receivable
 	if err := json.NewDecoder(r.Body).Decode(&rec); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -669,7 +619,7 @@ func updateReceivableHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	var rec Receivable
+	var rec model.Receivable
 	if err := json.NewDecoder(r.Body).Decode(&rec); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -736,7 +686,7 @@ func seedData(seedUserID int64) {
 	}
 
 	fmt.Printf("Seeding initial expenses for user %d...\\n", seedUserID)
-	seeds := []Expense{
+	seeds := []model.Expense{
 		{Title: "Zomato dinner", Category: "🍔 Food & Dining", Amount: 650, Date: "2025-03-09"},
 		{Title: "Monthly metro pass", Category: "🚗 Transport", Amount: 1200, Date: "2025-03-01"},
 		{Title: "Netflix", Category: "🎮 Entertainment", Amount: 649, Date: "2025-03-03"},
