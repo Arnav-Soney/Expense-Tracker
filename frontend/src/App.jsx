@@ -26,7 +26,10 @@ async function apiCall(endpoint, options = {}) {
     ...options.headers,
   };
 
-  if (token) {
+  const isLikelyJwt =
+    typeof token === "string" && token.split(".").length === 3;
+
+  if (isLikelyJwt) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
@@ -34,6 +37,11 @@ async function apiCall(endpoint, options = {}) {
     ...options,
     headers,
   });
+
+  if (res.status === 401) {
+    localStorage.removeItem("expense_tracker_token");
+  }
+
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
@@ -301,7 +309,6 @@ function AddExpenseModal({ onClose, onAdd, onAddReceivable, categories }) {
       // If it's a credit (To Receive) transaction, also add it to receivables
       if (txnType === "credit" && onAddReceivable) {
         onAddReceivable({
-          id: Date.now().toString(),
           person: title,
           amount: parseFloat(amount),
           amountReceived: 0,
@@ -1381,7 +1388,6 @@ function IncomePage({ incomes, onAdd, onDelete, theme }) {
       return;
     }
     onAdd({
-      id: Date.now(),
       month: form.month,
       source: form.source.trim() || "Income",
       amount: Number(form.amount),
@@ -1816,7 +1822,6 @@ function ReceivablesPage({ receivables, onAdd, onUpdate, onDelete, theme }) {
       return;
     }
     onAdd({
-      id: Date.now().toString(),
       person: form.person.trim(),
       amount: Number(form.amount),
       amountReceived: 0,
@@ -3246,7 +3251,10 @@ function Sidebar({
 
 // ── APP ───────────────────────────────────────────────────────────────────────
 export default function App() {
+  // Check if we have a token to determine initial loading state
+  const hasToken = !!localStorage.getItem("expense_tracker_token");
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(hasToken); // Only show loading if we have a token to restore
   const [page, setPage] = useState("home");
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -3256,22 +3264,8 @@ export default function App() {
     thisMonth: 0,
     topCategory: "",
   });
-  const [incomes, setIncomes] = useState(() => {
-    try {
-      const saved = localStorage.getItem("spendly_incomes");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [receivables, setReceivables] = useState(() => {
-    try {
-      const saved = localStorage.getItem("spendly_receivables");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [incomes, setIncomes] = useState([]);
+  const [receivables, setReceivables] = useState([]);
   const [themeMode, setThemeMode] = useState(() => {
     try {
       const saved = localStorage.getItem("spendly_theme");
@@ -3292,27 +3286,35 @@ export default function App() {
   }
 
   useEffect(() => {
-    // Check for saved token and restore session if valid
+    // Check for saved token and restore backend session
     const token = localStorage.getItem("expense_tracker_token");
     if (token) {
       try {
         const decoded = jwtDecode(token);
         // Check expiration
         if (decoded.exp * 1000 > Date.now()) {
-          setUser({
-            id: decoded.sub,
-            name: decoded.name,
-            email: decoded.email,
-            avatar: decoded.name
-              ? decoded.name.substring(0, 2).toUpperCase()
-              : "U",
-          });
+          apiCall("/session")
+            .then((sessionUser) => {
+              setUser(sessionUser);
+            })
+            .catch((err) => {
+              console.error("Session restore failed:", err);
+              localStorage.removeItem("expense_tracker_token");
+              setUser(null);
+            })
+            .finally(() => {
+              setLoading(false);
+            });
         } else {
           localStorage.removeItem("expense_tracker_token");
+          setLoading(false);
         }
       } catch (e) {
         localStorage.removeItem("expense_tracker_token");
+        setLoading(false);
       }
+    } else {
+      setLoading(false);
     }
 
     // Fetch categories
@@ -3329,21 +3331,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user) refreshExpenses();
+    if (user) {
+      refreshExpenses();
+      refreshIncomes();
+      refreshReceivables();
+    }
   }, [user]);
-
-  useEffect(() => {
-    localStorage.setItem("spendly_incomes", JSON.stringify(incomes));
-  }, [incomes]);
-
-  useEffect(() => {
-    localStorage.setItem("spendly_receivables", JSON.stringify(receivables));
-  }, [receivables]);
 
   function refreshExpenses() {
     if (!user) return;
     apiCall("/expenses").then(setExpenses).catch(console.error);
     apiCall("/stats").then(setStats).catch(console.error);
+  }
+
+  function refreshIncomes() {
+    if (!user) return;
+    apiCall("/incomes").then(setIncomes).catch(console.error);
+  }
+
+  function refreshReceivables() {
+    if (!user) return;
+    apiCall("/receivables").then(setReceivables).catch(console.error);
   }
 
   function deleteExpense(id) {
@@ -3356,31 +3364,83 @@ export default function App() {
   }
 
   function addIncome(entry) {
-    setIncomes((prev) => [...prev, entry]);
+    apiCall("/incomes/add", {
+      method: "POST",
+      body: JSON.stringify(entry),
+    })
+      .then(() => refreshIncomes())
+      .catch(console.error);
   }
 
   function deleteIncome(id) {
-    setIncomes((prev) => prev.filter((i) => i.id !== id));
+    apiCall("/incomes/delete", {
+      method: "DELETE",
+      body: JSON.stringify({ id }),
+    })
+      .then(() => refreshIncomes())
+      .catch(console.error);
   }
 
   function addReceivable(entry) {
-    setReceivables((prev) => [...prev, entry]);
+    apiCall("/receivables/add", {
+      method: "POST",
+      body: JSON.stringify(entry),
+    })
+      .then(() => refreshReceivables())
+      .catch(console.error);
   }
 
   function updateReceivable(updated) {
-    setReceivables((prev) =>
-      prev.map((r) => (r.id === updated.id ? updated : r)),
-    );
+    apiCall("/receivables/update", {
+      method: "PUT",
+      body: JSON.stringify(updated),
+    })
+      .then(() => refreshReceivables())
+      .catch(console.error);
   }
 
   function deleteReceivable(id) {
-    setReceivables((prev) => prev.filter((r) => r.id !== id));
+    apiCall("/receivables/delete", {
+      method: "DELETE",
+      body: JSON.stringify({ id }),
+    })
+      .then(() => refreshReceivables())
+      .catch(console.error);
   }
 
   function signOut() {
     setUser(null);
     setExpenses([]);
+    setIncomes([]);
+    setReceivables([]);
     localStorage.removeItem("expense_tracker_token");
+  }
+
+  // Show loading spinner while restoring session
+  if (loading) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#07090f",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            border: "3px solid #1e2d47",
+            borderTopColor: "#22d3a0",
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite",
+          }}
+        />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
 
   if (!user) return <AuthPage onAuth={setUser} />;
