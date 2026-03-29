@@ -719,11 +719,11 @@ func main() {
 		}
 	}
 
-	// db connection
+	// db connection intialisation
 	var err error
 	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is empty. Add it to .env")
+		log.Fatal("Failed to connect database instance")
 	}
 
 	db, err = pgxpool.New(context.Background(), databaseURL)
