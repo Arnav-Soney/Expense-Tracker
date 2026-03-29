@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"expense-tracker/backend/model"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,108 +18,9 @@ import (
 	"google.golang.org/api/idtoken"
 )
 
-// ── Data Models ────────────────────────────────────────────────────────────
-type Expense struct {
-	ID          int64   `json:"id"`
-	Title       string  `json:"title"`
-	Category    string  `json:"category"`
-	Subcategory string  `json:"subcategory"`
-	Amount      float64 `json:"amount"`
-	Date        string  `json:"date"`
-	Note        string  `json:"note"`
-	TxnType     string  `json:"txnType"` // "debit" or "credit"
-}
-
-type User struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Avatar string `json:"avatar"`
-}
-
-type CategoryInfo struct {
-	Name          string   `json:"name"`
-	Emoji         string   `json:"emoji"`
-	Subcategories []string `json:"subcategories"`
-}
-
-type ExpenseStats struct {
-	Total            float64 `json:"total"`
-	ThisMonth        float64 `json:"thisMonth"`
-	TopCategory      string  `json:"topCategory"`
-	TopCategoryEmoji string  `json:"topCategoryEmoji"`
-	TotalCredit      float64 `json:"totalCredit"`
-	ThisMonthCredit  float64 `json:"thisMonthCredit"`
-}
-
-type Income struct {
-	ID     int64   `json:"id"`
-	Month  string  `json:"month"` // e.g. "2026-03"
-	Source string  `json:"source"`
-	Amount float64 `json:"amount"`
-}
-
-type Receivable struct {
-	ID             int64   `json:"id"`
-	Person         string  `json:"person"`
-	Amount         float64 `json:"amount"`
-	AmountReceived float64 `json:"amountReceived"`
-	Description    string  `json:"description"`
-	Date           string  `json:"date"`
-	Received       bool    `json:"received"`
-}
-
 // ── Globals ────────────────────────────────────────────────────────
 var (
 	db *pgxpool.Pool
-
-	categories = map[string]CategoryInfo{
-		"🍔 Food & Dining": {
-			Name:          "Food & Dining",
-			Emoji:         "🍔",
-			Subcategories: []string{"Restaurants", "Groceries", "Coffee & Tea", "Fast Food", "Bars & Nightlife", "Bakeries"},
-		},
-		"🚗 Transport": {
-			Name:          "Transport",
-			Emoji:         "🚗",
-			Subcategories: []string{"Fuel", "Uber / Ola", "Metro / Bus", "Flight", "Parking", "Bike Rental"},
-		},
-		"🏠 Housing": {
-			Name:          "Housing",
-			Emoji:         "🏠",
-			Subcategories: []string{"Rent", "Electricity", "Water", "Internet", "Maintenance", "Furniture"},
-		},
-		"🎮 Entertainment": {
-			Name:          "Entertainment",
-			Emoji:         "🎮",
-			Subcategories: []string{"Streaming", "Games", "Movies", "Concerts", "Books", "Hobbies"},
-		},
-		"🏥 Health": {
-			Name:          "Health",
-			Emoji:         "🏥",
-			Subcategories: []string{"Doctor", "Pharmacy", "Gym", "Dental", "Insurance", "Mental Health"},
-		},
-		"👗 Shopping": {
-			Name:          "Shopping",
-			Emoji:         "👗",
-			Subcategories: []string{"Clothing", "Electronics", "Accessories", "Home Decor", "Beauty", "Sports"},
-		},
-		"📚 Education": {
-			Name:          "Education",
-			Emoji:         "📚",
-			Subcategories: []string{"Courses", "Books", "Subscriptions", "Workshops", "Stationery", "Tuition"},
-		},
-		"✈️ Travel": {
-			Name:          "Travel",
-			Emoji:         "✈️",
-			Subcategories: []string{"Hotels", "Flights", "Activities", "Food Abroad", "Souvenirs", "Visas"},
-		},
-		"💰 Misc": {
-			Name:          "Misc",
-			Emoji:         "💰",
-			Subcategories: []string{"Home-Parents", "Partner", "Gifts", "Donations", "Tips", "Pet Care", "Cleaning", "Other"},
-		},
-	}
 )
 
 // ── CORS Middleware ────────────────────────────────────────────────────────
@@ -216,16 +118,40 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // ── API Handlers ───────────────────────────────────────────────────────────
 
-// Get categories
+// Get categories from database
 func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var cats []CategoryInfo
-	for _, cat := range categories {
-		cats = append(cats, cat)
+	rows, err := db.Query(context.Background(), `
+		SELECT c.name, c.emoji, COALESCE(array_agg(s.name ORDER BY s.display_order), '{}') as subcategories
+		FROM categories c
+		LEFT JOIN subcategories s ON c.id = s.category_id AND s.is_active = true
+		WHERE c.is_active = true
+		GROUP BY c.id, c.name, c.emoji, c.display_order
+		ORDER BY c.display_order
+	`)
+	if err != nil {
+		log.Println("Failed to fetch categories:", err)
+		http.Error(w, "Failed to fetch categories", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var categories []model.CategoryInfo
+	for rows.Next() {
+		var cat model.CategoryInfo
+		if err := rows.Scan(&cat.Name, &cat.Emoji, &cat.Subcategories); err != nil {
+			log.Println("Category scan error:", err)
+			continue
+		}
+		categories = append(categories, cat)
 	}
 
-	json.NewEncoder(w).Encode(cats)
+	if categories == nil {
+		categories = []model.CategoryInfo{}
+	}
+
+	json.NewEncoder(w).Encode(categories)
 }
 
 type GoogleAuthRequest struct {
@@ -271,7 +197,7 @@ func authGoogleHandler(w http.ResponseWriter, r *http.Request) {
 	seedData(userID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(User{
+	json.NewEncoder(w).Encode(model.User{
 		ID:     fmt.Sprintf("%d", userID),
 		Name:   name,
 		Email:  email,
@@ -291,9 +217,9 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var exps []*Expense
+	var exps []*model.Expense
 	for rows.Next() {
-		var exp Expense
+		var exp model.Expense
 		var t time.Time
 		var category *string
 		var subcategory *string
@@ -320,7 +246,7 @@ func getExpensesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if exps == nil {
-		exps = []*Expense{}
+		exps = []*model.Expense{}
 	}
 
 	json.NewEncoder(w).Encode(exps)
@@ -335,7 +261,7 @@ func addExpenseHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	var exp Expense
+	var exp model.Expense
 	if err := json.NewDecoder(r.Body).Decode(&exp); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -440,11 +366,15 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	emoji := ""
-	if catInfo, ok := categories[topCat]; ok {
-		emoji = catInfo.Emoji
+	if topCat != "" {
+		err = db.QueryRow(context.Background(),
+			"SELECT emoji FROM categories WHERE name = $1", topCat).Scan(&emoji)
+		if err != nil && err != pgx.ErrNoRows {
+			log.Println("Category emoji lookup error:", err)
+		}
 	}
 
-	stats := ExpenseStats{
+	stats := model.ExpenseStats{
 		Total:            total,
 		ThisMonth:        thisMonth,
 		TopCategory:      topCat,
@@ -460,7 +390,7 @@ func getStatsHandler(w http.ResponseWriter, r *http.Request) {
 func getUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	user := User{
+	user := model.User{
 		ID:     "1",
 		Name:   "Alex Rivera",
 		Email:  "alex@gmail.com",
@@ -490,7 +420,7 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request) {
 		avatar = strings.ToUpper(string(parts[0][0]))
 	}
 
-	json.NewEncoder(w).Encode(User{
+	json.NewEncoder(w).Encode(model.User{
 		ID:     fmt.Sprintf("%d", userID),
 		Name:   name,
 		Email:  email,
@@ -512,9 +442,9 @@ func getIncomesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var incomes []Income
+	var incomes []model.Income
 	for rows.Next() {
-		var inc Income
+		var inc model.Income
 		if err := rows.Scan(&inc.ID, &inc.Month, &inc.Source, &inc.Amount); err != nil {
 			log.Println("Income scan error:", err)
 			continue
@@ -523,7 +453,7 @@ func getIncomesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if incomes == nil {
-		incomes = []Income{}
+		incomes = []model.Income{}
 	}
 	json.NewEncoder(w).Encode(incomes)
 }
@@ -537,7 +467,7 @@ func addIncomeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	var inc Income
+	var inc model.Income
 	if err := json.NewDecoder(r.Body).Decode(&inc); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -607,9 +537,9 @@ func getReceivablesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var receivables []Receivable
+	var receivables []model.Receivable
 	for rows.Next() {
-		var rec Receivable
+		var rec model.Receivable
 		var dateVal time.Time
 		var desc *string
 		if err := rows.Scan(&rec.ID, &rec.Person, &rec.Amount, &rec.AmountReceived, &desc, &dateVal, &rec.Received); err != nil {
@@ -624,7 +554,7 @@ func getReceivablesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if receivables == nil {
-		receivables = []Receivable{}
+		receivables = []model.Receivable{}
 	}
 	json.NewEncoder(w).Encode(receivables)
 }
@@ -638,7 +568,7 @@ func addReceivableHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	var rec Receivable
+	var rec model.Receivable
 	if err := json.NewDecoder(r.Body).Decode(&rec); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -669,7 +599,7 @@ func updateReceivableHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	userID := r.Context().Value(userContextKey).(int64)
 
-	var rec Receivable
+	var rec model.Receivable
 	if err := json.NewDecoder(r.Body).Decode(&rec); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
@@ -736,7 +666,7 @@ func seedData(seedUserID int64) {
 	}
 
 	fmt.Printf("Seeding initial expenses for user %d...\\n", seedUserID)
-	seeds := []Expense{
+	seeds := []model.Expense{
 		{Title: "Zomato dinner", Category: "🍔 Food & Dining", Amount: 650, Date: "2025-03-09"},
 		{Title: "Monthly metro pass", Category: "🚗 Transport", Amount: 1200, Date: "2025-03-01"},
 		{Title: "Netflix", Category: "🎮 Entertainment", Amount: 649, Date: "2025-03-03"},
@@ -769,11 +699,11 @@ func main() {
 		}
 	}
 
-	// db connection
+	// db connection intialisation
 	var err error
 	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is empty. Add it to .env")
+		log.Fatal("Failed to connect database instance")
 	}
 
 	db, err = pgxpool.New(context.Background(), databaseURL)
@@ -866,6 +796,111 @@ func main() {
 	`)
 	if err != nil {
 		log.Printf("Warning: could not create receivables table: %v\n", err)
+	}
+
+	// Create categories and subcategories tables
+	_, err = db.Exec(context.Background(), `
+		CREATE TABLE IF NOT EXISTS categories (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(100) NOT NULL UNIQUE,
+			emoji VARCHAR(10) NOT NULL,
+			display_order INTEGER DEFAULT 0,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT NOW(),
+			updated_at TIMESTAMP DEFAULT NOW()
+		)
+	`)
+	if err != nil {
+		log.Printf("Warning: could not create categories table: %v\n", err)
+	}
+
+	_, err = db.Exec(context.Background(), `
+		CREATE TABLE IF NOT EXISTS subcategories (
+			id SERIAL PRIMARY KEY,
+			category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+			name VARCHAR(100) NOT NULL,
+			display_order INTEGER DEFAULT 0,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at TIMESTAMP DEFAULT NOW(),
+			UNIQUE(category_id, name)
+		)
+	`)
+	if err != nil {
+		log.Printf("Warning: could not create subcategories table: %v\n", err)
+	}
+
+	// Create indexes for faster queries
+	_, err = db.Exec(context.Background(), `
+		CREATE INDEX IF NOT EXISTS idx_subcategories_category_id ON subcategories(category_id)
+	`)
+	if err != nil {
+		log.Printf("Warning: could not create subcategories index: %v\n", err)
+	}
+
+	_, err = db.Exec(context.Background(), `
+		CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(is_active) WHERE is_active = true
+	`)
+	if err != nil {
+		log.Printf("Warning: could not create categories index: %v\n", err)
+	}
+
+	// Seed default categories if table is empty
+	var categoryCount int
+	err = db.QueryRow(context.Background(), "SELECT COUNT(*) FROM categories").Scan(&categoryCount)
+	if err != nil {
+		log.Printf("Warning: could not check categories count: %v\n", err)
+	}
+
+	if categoryCount == 0 {
+		log.Println("Seeding default categories...")
+
+		// Insert default categories
+		_, err = db.Exec(context.Background(), `
+			INSERT INTO categories (name, emoji, display_order) VALUES
+			('Food & Dining', '🍔', 1),
+			('Transport', '🚗', 2),
+			('Housing', '🏠', 3),
+			('Entertainment', '🎮', 4),
+			('Health', '🏥', 5),
+			('Shopping', '👗', 6),
+			('Education', '📚', 7),
+			('Travel', '✈️', 8),
+			('Misc', '💰', 9)
+			ON CONFLICT (name) DO NOTHING
+		`)
+		if err != nil {
+			log.Printf("Warning: could not insert default categories: %v\n", err)
+		}
+
+		// Insert subcategories for each category
+		subcategoryData := map[string][]string{
+			"Food & Dining": {"Restaurants", "Groceries", "Coffee & Tea", "Fast Food", "Bars & Nightlife", "Bakeries"},
+			"Transport":     {"Fuel", "Uber / Ola", "Metro / Bus", "Flight", "Parking", "Bike Rental"},
+			"Housing":       {"Rent", "Electricity", "Water", "Internet", "Maintenance", "Furniture"},
+			"Entertainment": {"Streaming", "Games", "Movies", "Concerts", "Books", "Hobbies"},
+			"Health":        {"Doctor", "Pharmacy", "Gym", "Dental", "Insurance", "Mental Health"},
+			"Shopping":      {"Clothing", "Electronics", "Accessories", "Home Decor", "Beauty", "Sports"},
+			"Education":     {"Courses", "Books", "Subscriptions", "Workshops", "Stationery", "Tuition"},
+			"Travel":        {"Hotels", "Flights", "Activities", "Food Abroad", "Souvenirs", "Visas"},
+			"Misc":          {"Home-Parents", "Partner", "Gifts", "Donations", "Tips", "Pet Care", "Cleaning", "Other"},
+		}
+
+		for categoryName, subcats := range subcategoryData {
+			for idx, subcat := range subcats {
+				_, err = db.Exec(context.Background(), `
+					INSERT INTO subcategories (category_id, name, display_order)
+					SELECT id, $1, $2
+					FROM categories
+					WHERE name = $3
+					ON CONFLICT (category_id, name) DO NOTHING
+				`, subcat, idx+1, categoryName)
+				if err != nil {
+					log.Printf("Warning: could not insert subcategory %s for %s: %v\n", subcat, categoryName, err)
+				}
+			}
+		}
+
+		log.Println("Default categories seeded successfully!")
 	}
 
 	// Ensure a seed user exists and get its id (no hardcoded primary key)
