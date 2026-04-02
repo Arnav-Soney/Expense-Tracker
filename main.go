@@ -23,10 +23,12 @@ import (
 
 // ── Globals ────────────────────────────────────────────────────────
 var (
-	db                        *pgxpool.Pool
-	loginRateLimitMaxAttempts = getEnvInt("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", 5)
-	loginRateLimitWindow      = getEnvDuration("LOGIN_RATE_LIMIT_WINDOW", time.Minute)
-	loginRateLimiter          = struct {
+	db *pgxpool.Pool
+
+	loginRateLimitMaxAttempts int
+	loginRateLimitWindow      time.Duration
+
+	loginRateLimiter = struct {
 		mu       sync.Mutex
 		attempts map[string]*loginRateLimitEntry
 	}{
@@ -61,6 +63,30 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	if err != nil || parsed <= 0 {
 		log.Printf("Invalid %s=%q, using default %s", key, v, fallback)
 		return fallback
+	}
+	return parsed
+}
+
+func mustGetEnvInt(key string) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		log.Fatalf("Required env variable %s is not set. Add it to your .env file.", key)
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil || parsed <= 0 {
+		log.Fatalf("Invalid value for %s=%q: must be a positive integer.", key, v)
+	}
+	return parsed
+}
+
+func mustGetEnvDuration(key string) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		log.Fatalf("Required env variable %s is not set. Add it to your .env file.", key)
+	}
+	parsed, err := time.ParseDuration(v)
+	if err != nil || parsed <= 0 {
+		log.Fatalf("Invalid value for %s=%q: must be a valid Go duration (e.g. 30s, 1m, 5m).", key, v)
 	}
 	return parsed
 }
@@ -808,6 +834,13 @@ func main() {
 			log.Println("Loaded env from backend/configs/.env")
 		}
 	}
+
+	// ── Rate-limit config (loaded here, after .env is in the environment) ──
+	// Values are required – no defaults are hardcoded in source.
+	loginRateLimitMaxAttempts = mustGetEnvInt("LOGIN_RATE_LIMIT_MAX_ATTEMPTS")
+	loginRateLimitWindow = mustGetEnvDuration("LOGIN_RATE_LIMIT_WINDOW")
+	log.Printf("Login rate limit: %d attempts per %s window",
+		loginRateLimitMaxAttempts, loginRateLimitWindow)
 
 	// db connection intialisation
 	var err error
