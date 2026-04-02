@@ -197,16 +197,6 @@ See [`CATEGORIES_MIGRATION.md`](CATEGORIES_MIGRATION.md) for detailed schema doc
 
 - `GET /api/stats` - Get expense statistics
 
-## 🧪 Testing
-
-See [`TEST_CATEGORIES.md`](TEST_CATEGORIES.md) for testing procedures.
-
-## 📖 Documentation
-
-- [`IMPLEMENTATION_SUMMARY.md`](IMPLEMENTATION_SUMMARY.md) - Implementation details
-- [`CATEGORIES_MIGRATION.md`](CATEGORIES_MIGRATION.md) - Database migration guide
-- [`TEST_CATEGORIES.md`](TEST_CATEGORIES.md) - Testing guide
-
 ## 🤝 Contributing
 
 1. Fork the repository
