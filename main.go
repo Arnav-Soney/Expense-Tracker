@@ -6,9 +6,12 @@ import (
 	"expense-tracker/backend/model"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
@@ -20,8 +23,103 @@ import (
 
 // ── Globals ────────────────────────────────────────────────────────
 var (
-	db *pgxpool.Pool
+	db                        *pgxpool.Pool
+	loginRateLimitMaxAttempts = getEnvInt("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", 5)
+	loginRateLimitWindow      = getEnvDuration("LOGIN_RATE_LIMIT_WINDOW", time.Minute)
+	loginRateLimiter          = struct {
+		mu       sync.Mutex
+		attempts map[string]*loginRateLimitEntry
+	}{
+		attempts: make(map[string]*loginRateLimitEntry),
+	}
 )
+
+type loginRateLimitEntry struct {
+	count     int
+	windowEnd time.Time
+}
+
+func getEnvInt(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil || parsed <= 0 {
+		log.Printf("Invalid %s=%q, using default %d", key, v, fallback)
+		return fallback
+	}
+	return parsed
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(v)
+	if err != nil || parsed <= 0 {
+		log.Printf("Invalid %s=%q, using default %s", key, v, fallback)
+		return fallback
+	}
+	return parsed
+}
+
+func getClientIP(r *http.Request) string {
+	if xfwd := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xfwd != "" {
+		parts := strings.Split(xfwd, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+
+	if xreal := strings.TrimSpace(r.Header.Get("X-Real-IP")); xreal != "" {
+		return xreal
+	}
+
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && host != "" {
+		return host
+	}
+
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func allowLoginAttempt(key string) (bool, time.Duration) {
+	now := time.Now()
+
+	loginRateLimiter.mu.Lock()
+	defer loginRateLimiter.mu.Unlock()
+
+	entry, exists := loginRateLimiter.attempts[key]
+	if !exists || now.After(entry.windowEnd) {
+		entry = &loginRateLimitEntry{
+			count:     0,
+			windowEnd: now.Add(loginRateLimitWindow),
+		}
+		loginRateLimiter.attempts[key] = entry
+	}
+
+	if entry.count >= loginRateLimitMaxAttempts {
+		retryAfter := time.Until(entry.windowEnd)
+		if retryAfter < 0 {
+			retryAfter = 0
+		}
+		return false, retryAfter
+	}
+
+	entry.count++
+
+	if len(loginRateLimiter.attempts) > 10000 {
+		for attemptKey, attempt := range loginRateLimiter.attempts {
+			if now.After(attempt.windowEnd) {
+				delete(loginRateLimiter.attempts, attemptKey)
+			}
+		}
+	}
+
+	return true, 0
+}
 
 // ── CORS Middleware ────────────────────────────────────────────────────────
 func cors(next http.Handler) http.Handler {
@@ -162,6 +260,18 @@ type GoogleAuthRequest struct {
 func authGoogleHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	clientIP := getClientIP(r)
+	allowed, retryAfter := allowLoginAttempt(clientIP)
+	if !allowed {
+		retryAfterSeconds := int((retryAfter + time.Second - 1) / time.Second)
+		if retryAfterSeconds < 1 {
+			retryAfterSeconds = 1
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+		http.Error(w, "Too many login attempts. Please try again later.", http.StatusTooManyRequests)
 		return
 	}
 
