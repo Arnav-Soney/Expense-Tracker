@@ -25,7 +25,6 @@ import (
 var (
 	db *pgxpool.Pool
 
-	// Populated in main() after godotenv.Load() so .env values are respected.
 	loginRateLimitMaxAttempts int
 	loginRateLimitWindow      time.Duration
 
@@ -68,8 +67,6 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	return parsed
 }
 
-// mustGetEnvInt reads a required integer env variable and fatals if it is
-// missing or invalid – no default is ever hardcoded in source.
 func mustGetEnvInt(key string) int {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
@@ -82,8 +79,6 @@ func mustGetEnvInt(key string) int {
 	return parsed
 }
 
-// mustGetEnvDuration reads a required duration env variable and fatals if it
-// is missing or invalid – no default is ever hardcoded in source.
 func mustGetEnvDuration(key string) time.Duration {
 	v := strings.TrimSpace(os.Getenv(key))
 	if v == "" {
