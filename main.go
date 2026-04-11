@@ -18,15 +18,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+	openai "github.com/sashabaranov/go-openai"
 	"google.golang.org/api/idtoken"
 )
 
 // ── Globals ────────────────────────────────────────────────────────
 var (
-	db                        *pgxpool.Pool
-	loginRateLimitMaxAttempts = getEnvInt("LOGIN_RATE_LIMIT_MAX_ATTEMPTS", 5)
-	loginRateLimitWindow      = getEnvDuration("LOGIN_RATE_LIMIT_WINDOW", time.Minute)
-	loginRateLimiter          = struct {
+	db *pgxpool.Pool
+
+	loginRateLimitMaxAttempts int
+	loginRateLimitWindow      time.Duration
+
+	loginRateLimiter = struct {
 		mu       sync.Mutex
 		attempts map[string]*loginRateLimitEntry
 	}{
@@ -61,6 +64,30 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	if err != nil || parsed <= 0 {
 		log.Printf("Invalid %s=%q, using default %s", key, v, fallback)
 		return fallback
+	}
+	return parsed
+}
+
+func mustGetEnvInt(key string) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		log.Fatalf("Required env variable %s is not set. Add it to your .env file.", key)
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil || parsed <= 0 {
+		log.Fatalf("Invalid value for %s=%q: must be a positive integer.", key, v)
+	}
+	return parsed
+}
+
+func mustGetEnvDuration(key string) time.Duration {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		log.Fatalf("Required env variable %s is not set. Add it to your .env file.", key)
+	}
+	parsed, err := time.ParseDuration(v)
+	if err != nil || parsed <= 0 {
+		log.Fatalf("Invalid value for %s=%q: must be a valid Go duration (e.g. 30s, 1m, 5m).", key, v)
 	}
 	return parsed
 }
@@ -767,6 +794,191 @@ func deleteReceivableHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
 
+// AI Chatbot handler
+func chatbotHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	userID := r.Context().Value(userContextKey).(int64)
+
+	var req model.ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Message) == "" {
+		http.Error(w, "Message cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	// Fetch user's expense data for context
+	rows, err := db.Query(context.Background(), `
+		SELECT title, amount, category, subcategory, expense_date, txn_type
+		FROM expenses
+		WHERE user_id=$1
+		ORDER BY expense_date DESC
+		LIMIT 100
+	`, userID)
+	if err != nil {
+		log.Println("Failed to fetch expenses for AI:", err)
+		http.Error(w, "Failed to fetch expense data", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var expenses []model.Expense
+	for rows.Next() {
+		var exp model.Expense
+		var t time.Time
+		var category, subcategory, txnType *string
+
+		if err := rows.Scan(&exp.Title, &exp.Amount, &category, &subcategory, &t, &txnType); err != nil {
+			log.Println("Scan error:", err)
+			continue
+		}
+		if category != nil {
+			exp.Category = *category
+		}
+		if subcategory != nil {
+			exp.Subcategory = *subcategory
+		}
+		if txnType != nil {
+			exp.TxnType = *txnType
+		} else {
+			exp.TxnType = "debit"
+		}
+		exp.Date = t.Format("2006-01-02")
+		expenses = append(expenses, exp)
+	}
+
+	// Fetch income data
+	incomeRows, err := db.Query(context.Background(), `
+		SELECT month, source, amount
+		FROM incomes
+		WHERE user_id=$1
+		ORDER BY month DESC
+		LIMIT 12
+	`, userID)
+	if err == nil {
+		defer incomeRows.Close()
+		var incomes []model.Income
+		for incomeRows.Next() {
+			var inc model.Income
+			if err := incomeRows.Scan(&inc.Month, &inc.Source, &inc.Amount); err == nil {
+				incomes = append(incomes, inc)
+			}
+		}
+	}
+
+	// Get stats
+	var stats model.ExpenseStats
+	currentMonthStart := time.Now().Format("2006-01") + "-01"
+
+	db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id=$1 AND (txn_type IS NULL OR txn_type='debit')", userID).Scan(&stats.Total)
+	db.QueryRow(context.Background(), "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE expense_date >= $1 AND user_id=$2 AND (txn_type IS NULL OR txn_type='debit')", currentMonthStart, userID).Scan(&stats.ThisMonth)
+
+	// Build context for AI
+	contextData := fmt.Sprintf(`You are a friendly financial advisor assistant for a user's expense tracking app. Here's their financial data:
+
+MONTHLY STATS:
+- Total spent (all time): ₹%.2f
+- This month spent: ₹%.2f
+
+RECENT EXPENSES (last 100):
+`, stats.Total, stats.ThisMonth)
+
+	for i, exp := range expenses {
+		if i < 20 { // Include detailed recent 20
+			contextData += fmt.Sprintf("- %s: ₹%.2f in %s (%s) on %s\n", exp.Title, exp.Amount, exp.Category, exp.Subcategory, exp.Date)
+		}
+	}
+
+	// Category breakdown
+	catTotals := make(map[string]float64)
+	for _, exp := range expenses {
+		if exp.TxnType != "credit" {
+			catTotals[exp.Category] += exp.Amount
+		}
+	}
+
+	contextData += "\nSPENDING BY CATEGORY:\n"
+	for cat, total := range catTotals {
+		contextData += fmt.Sprintf("- %s: ₹%.2f\n", cat, total)
+	}
+
+	contextData += fmt.Sprintf(`
+Based on this data, provide helpful, personalized advice about their spending habits. Be friendly, encouraging, and specific. When they ask questions, reference their actual data. Suggest ways to save money or improve their financial habits. Keep responses concise and actionable.
+
+User's question: %s`, req.Message)
+
+	// Call OpenRouter API (Nemotron 3 Super via OpenRouter)
+	apiKey := os.Getenv("NVIDIA_API_KEY")
+	if apiKey == "" {
+		log.Println("NVIDIA_API_KEY not set")
+		http.Error(w, "AI service not configured", http.StatusInternalServerError)
+		return
+	}
+
+	modelName := os.Getenv("AI_MODEL")
+	baseURL := os.Getenv("AI_BASE_URL")
+
+	// OpenRouter uses OpenAI-compatible API format
+	config := openai.DefaultConfig(apiKey)
+	config.BaseURL = baseURL
+	client := openai.NewClientWithConfig(config)
+
+	chatReq := openai.ChatCompletionRequest{
+		Model: modelName,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role:    openai.ChatMessageRoleSystem,
+				Content: "You are a helpful financial advisor assistant. Provide practical, actionable advice based on the user's expense data. Be friendly and encouraging.",
+			},
+			{
+				Role:    openai.ChatMessageRoleUser,
+				Content: contextData,
+			},
+		},
+		MaxTokens:   500,
+		Temperature: 0.7,
+	}
+
+	resp, err := client.CreateChatCompletion(context.Background(), chatReq)
+	if err != nil {
+		log.Println("NVIDIA NIM API error:", err)
+		http.Error(w, "Failed to get AI response", http.StatusInternalServerError)
+		return
+	}
+
+	if len(resp.Choices) == 0 {
+		http.Error(w, "No response from AI", http.StatusInternalServerError)
+		return
+	}
+
+	aiReply := resp.Choices[0].Message.Content
+
+	// Return response
+	json.NewEncoder(w).Encode(model.ChatResponse{
+		Reply: aiReply,
+		Messages: []model.ChatMessage{
+			{
+				Role:      "user",
+				Content:   req.Message,
+				Timestamp: time.Now().Format(time.RFC3339),
+			},
+			{
+				Role:      "assistant",
+				Content:   aiReply,
+				Timestamp: time.Now().Format(time.RFC3339),
+			},
+		},
+	})
+}
+
 func seedData(seedUserID int64) {
 	// Check if user was already seeded (using a flag column)
 	var seeded bool
@@ -802,12 +1014,23 @@ func seedData(seedUserID int64) {
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		if err2 := godotenv.Load("backend/configs/.env"); err2 != nil {
-			log.Println("No .env file found")
+		if err2 := godotenv.Load("backend/.env"); err2 != nil {
+			if err3 := godotenv.Load("backend/configs/.env"); err3 != nil {
+				log.Println("No .env file found")
+			} else {
+				log.Println("Loaded env from backend/configs/.env")
+			}
 		} else {
-			log.Println("Loaded env from backend/configs/.env")
+			log.Println("Loaded env from backend/.env")
 		}
 	}
+
+	// ── Rate-limit config (loaded here, after .env is in the environment) ──
+	// Values are required – no defaults are hardcoded in source.
+	loginRateLimitMaxAttempts = mustGetEnvInt("LOGIN_RATE_LIMIT_MAX_ATTEMPTS")
+	loginRateLimitWindow = mustGetEnvDuration("LOGIN_RATE_LIMIT_WINDOW")
+	log.Printf("Login rate limit: %d attempts per %s window",
+		loginRateLimitMaxAttempts, loginRateLimitWindow)
 
 	// db connection intialisation
 	var err error
@@ -1053,6 +1276,9 @@ func main() {
 	mux.HandleFunc("/api/receivables/add", authMiddleware(addReceivableHandler))
 	mux.HandleFunc("/api/receivables/update", authMiddleware(updateReceivableHandler))
 	mux.HandleFunc("/api/receivables/delete", authMiddleware(deleteReceivableHandler))
+
+	// AI Chatbot route
+	mux.HandleFunc("/api/chat", authMiddleware(chatbotHandler))
 
 	// Serve frontend static files
 	staticDir := "./frontend"

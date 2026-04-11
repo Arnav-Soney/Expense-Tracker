@@ -3042,6 +3042,293 @@ function VisualisePage({ expenses, categories, incomes, theme }) {
   );
 }
 
+// ── CHATBOT PAGE ──────────────────────────────────────────────────────────────
+// Floating Chat Widget Component
+function ChatWidget({ theme }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  async function sendMessage() {
+    if (!input.trim() || loading) return;
+
+    const userMessage = input.trim();
+    setInput("");
+    
+    setMessages(prev => [...prev, {
+      role: "user",
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    }]);
+
+    setLoading(true);
+
+    try {
+      const response = await apiCall("/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: userMessage })
+      });
+
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: response.reply,
+        timestamp: new Date().toISOString()
+      }]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: "Sorry, I'm having trouble connecting. Please check: 1) NVIDIA_API_KEY is set in backend/.env, 2) Backend is running, 3) OpenRouter API key is valid.",
+        timestamp: new Date().toISOString()
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      {/* Floating Chat Button */}
+      {!isOpen && (
+        <button
+          onClick={() => setIsOpen(true)}
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            width: 60,
+            height: 60,
+            borderRadius: "50%",
+            background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
+            border: "none",
+            cursor: "pointer",
+            fontSize: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 4px 20px rgba(34,211,160,0.4)",
+            zIndex: 1000,
+            transition: "all 0.3s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "scale(1.1)";
+            e.currentTarget.style.boxShadow = "0 6px 25px rgba(34,211,160,0.5)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "scale(1)";
+            e.currentTarget.style.boxShadow = "0 4px 20px rgba(34,211,160,0.4)";
+          }}
+        >
+          💬
+        </button>
+      )}
+
+      {/* Chat Window */}
+      {isOpen && (
+        <div style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          width: 380,
+          height: 550,
+          background: theme.cardBg,
+          border: `1px solid ${theme.border}`,
+          borderRadius: 16,
+          boxShadow: `0 8px 32px ${theme.mode === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.15)"}`,
+          zIndex: 1000,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}>
+          {/* Header */}
+          <div style={{
+            padding: "16px 20px",
+            background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
+            color: "#0a0f1e",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>🤖 AI Advisor</div>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>Powered by NVIDIA Nemotron</div>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              style={{
+                background: "rgba(10,15,30,0.2)",
+                border: "none",
+                borderRadius: 8,
+                width: 32,
+                height: 32,
+                cursor: "pointer",
+                fontSize: 18,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#0a0f1e",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "16px",
+            background: theme.bg,
+          }}>
+            {messages.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 20px", color: theme.textSecondary }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>👋</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Hi! I'm your AI advisor</div>
+                <div style={{ fontSize: 12, marginBottom: 16 }}>Ask me about your spending</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    onClick={() => setInput("How can I save money?")}
+                    style={{
+                      padding: "8px 12px",
+                      background: theme.cardBg,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      color: theme.textSecondary,
+                      cursor: "pointer",
+                      fontSize: 12,
+                    }}
+                  >
+                    💡 How can I save money?
+                  </button>
+                  <button
+                    onClick={() => setInput("What are my top expenses?")}
+                    style={{
+                      padding: "8px 12px",
+                      background: theme.cardBg,
+                      border: `1px solid ${theme.border}`,
+                      borderRadius: 8,
+                      color: theme.textSecondary,
+                      cursor: "pointer",
+                      fontSize: 12,
+                    }}
+                  >
+                    📊 What are my top expenses?
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      marginBottom: 12,
+                      display: "flex",
+                      justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                    }}
+                  >
+                    <div
+                      style={{
+                        maxWidth: "80%",
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: msg.role === "user"
+                          ? "linear-gradient(135deg,#22d3a0,#14b8a6)"
+                          : theme.cardBg,
+                        color: msg.role === "user" ? "#0a0f1e" : theme.text,
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        whiteSpace: "pre-wrap",
+                        border: msg.role === "assistant" ? `1px solid ${theme.border}` : "none",
+                      }}
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {loading && (
+                  <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 12 }}>
+                    <div style={{
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      background: theme.cardBg,
+                      border: `1px solid ${theme.border}`,
+                      color: theme.textSecondary,
+                      fontSize: 13,
+                    }}>
+                      <span>Thinking</span>
+                      <span className="dots">...</span>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Input */}
+          <div style={{
+            padding: "12px 16px",
+            background: theme.cardBg,
+            borderTop: `1px solid ${theme.border}`,
+            display: "flex",
+            gap: 8,
+          }}>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+              placeholder="Ask me anything..."
+              disabled={loading}
+              style={{
+                flex: 1,
+                padding: "10px 12px",
+                background: theme.inputBg,
+                border: `1px solid ${theme.border}`,
+                borderRadius: 8,
+                color: theme.text,
+                fontSize: 13,
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || loading}
+              style={{
+                padding: "10px 16px",
+                background: input.trim() && !loading
+                  ? "linear-gradient(135deg,#22d3a0,#14b8a6)"
+                  : theme.cardBgHover,
+                border: "none",
+                borderRadius: 8,
+                color: input.trim() && !loading ? "#0a0f1e" : theme.textTertiary,
+                cursor: input.trim() && !loading ? "pointer" : "not-allowed",
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: "inherit",
+              }}
+            >
+              ➤
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
 function Sidebar({
   page,
@@ -3461,6 +3748,15 @@ export default function App() {
         ::-webkit-scrollbar { width:6px; }
         ::-webkit-scrollbar-track { background:${theme.bg}; }
         ::-webkit-scrollbar-thumb { background:${theme.border}; border-radius:3px; }
+        
+        @keyframes dots {
+          0%, 20% { content: '.'; }
+          40% { content: '..'; }
+          60%, 100% { content: '...'; }
+        }
+        .dots {
+          animation: dots 1.5s infinite;
+        }
       `}</style>
 
       <Sidebar
@@ -3563,6 +3859,9 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* Floating Chat Widget */}
+      <ChatWidget theme={theme} />
 
       {modal && (
         <AddExpenseModal
