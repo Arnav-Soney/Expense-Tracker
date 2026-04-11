@@ -622,6 +622,588 @@ function AddExpenseModal({ onClose, onAdd, onAddReceivable, categories }) {
   );
 }
 
+// ── RECEIPT UPLOAD MODAL ──────────────────────────────────────────────────────
+function ReceiptUploadModal({ onClose, onAdd, onAddReceivable, categories }) {
+  const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("");
+  const [subcategory, setSubcategory] = useState("");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(today());
+  const [note, setNote] = useState("");
+  const [txnType, setTxnType] = useState("debit");
+  const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [scanError, setScanError] = useState("");
+  const fileInputRef = useRef(null);
+
+  const subcats = category
+    ? categories.find((c) => c.name === category || category.includes(c.name))
+        ?.subcategories || []
+    : [];
+
+  async function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setScanError("Please select an image file");
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setScanError("Image must be less than 10MB");
+      return;
+    }
+
+    setScanError("");
+    setScanning(true);
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64Image = event.target.result;
+      setImagePreview(base64Image);
+
+      try {
+        const response = await apiCall("/receipt/ocr", {
+          method: "POST",
+          body: JSON.stringify({ imageData: base64Image }),
+        });
+
+        if (response.success) {
+          setTitle(response.title || "");
+          setAmount(response.amount ? response.amount.toString() : "");
+          setDate(response.date || today());
+          setNote(response.note || "");
+
+          // Find and set category
+          if (response.category) {
+            const catName =
+              response.category.split(" ").slice(1).join(" ") ||
+              response.category;
+            const foundCat = categories.find(
+              (c) => c.name === catName || response.category.includes(c.name),
+            );
+            if (foundCat) {
+              setCategory(foundCat.name);
+              // Set subcategory if it matches
+              if (
+                response.subcategory &&
+                foundCat.subcategories.includes(response.subcategory)
+              ) {
+                setSubcategory(response.subcategory);
+              }
+            }
+          }
+        } else {
+          setScanError(response.error || "Failed to scan receipt");
+        }
+      } catch (err) {
+        console.error("OCR error:", err);
+        setScanError(
+          "Failed to scan receipt. Please try again or enter details manually.",
+        );
+      }
+      setScanning(false);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submit() {
+    if (!title || !category || !subcategory || !amount) return;
+
+    setLoading(true);
+    try {
+      const selectedCat = categories.find((c) => c.name === category);
+      await apiCall("/expenses/add", {
+        method: "POST",
+        body: JSON.stringify({
+          title,
+          category: selectedCat ? `${selectedCat.emoji} ${category}` : category,
+          subcategory,
+          amount: parseFloat(amount),
+          date,
+          note,
+          txnType,
+        }),
+      });
+
+      if (txnType === "credit" && onAddReceivable) {
+        onAddReceivable({
+          person: title,
+          amount: parseFloat(amount),
+          amountReceived: 0,
+          description: `${category} - ${subcategory}`,
+          date,
+          received: false,
+        });
+      }
+
+      onAdd();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add expense");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.75)",
+        backdropFilter: "blur(6px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#0d1117",
+          border: "1px solid #1e2d47",
+          borderRadius: 20,
+          padding: 36,
+          width: 520,
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: "0 40px 80px rgba(0,0,0,.8)",
+          animation: "slideUp .25s ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <style>{`@keyframes slideUp { from { transform:translateY(20px); opacity:0; } to { transform:translateY(0); opacity:1; } }`}</style>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 28,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: "'Syne',sans-serif",
+                fontSize: 22,
+                fontWeight: 800,
+                color: "#f1f5f9",
+              }}
+            >
+              📷 Scan Receipt
+            </div>
+            <div style={{ fontSize: 13, color: "#475569", marginTop: 2 }}>
+              Upload a receipt to auto-fill expense details
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: "#1a2236",
+              border: "none",
+              color: "#64748b",
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              cursor: "pointer",
+              fontSize: 18,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Upload Area */}
+        <div style={{ marginBottom: 24 }}>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            ref={fileInputRef}
+            style={{ display: "none" }}
+          />
+
+          {!imagePreview ? (
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: "2px dashed #1e2d47",
+                borderRadius: 16,
+                padding: "40px 20px",
+                textAlign: "center",
+                cursor: "pointer",
+                transition: "all .2s",
+                background: "#0a0f1e",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#22d3a0";
+                e.currentTarget.style.background = "#22d3a008";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#1e2d47";
+                e.currentTarget.style.background = "#0a0f1e";
+              }}
+            >
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📄</div>
+              <div style={{ color: "#f1f5f9", fontWeight: 600, fontSize: 15 }}>
+                Click to upload receipt
+              </div>
+              <div style={{ color: "#475569", fontSize: 13, marginTop: 6 }}>
+                or drag and drop an image
+              </div>
+              <div style={{ color: "#334155", fontSize: 12, marginTop: 8 }}>
+                Supports JPG, PNG, HEIC up to 10MB
+              </div>
+            </div>
+          ) : (
+            <div style={{ position: "relative" }}>
+              <img
+                src={imagePreview}
+                alt="Receipt preview"
+                style={{
+                  width: "100%",
+                  maxHeight: 200,
+                  objectFit: "contain",
+                  borderRadius: 12,
+                  border: "1px solid #1e2d47",
+                }}
+              />
+              <button
+                onClick={() => {
+                  setImagePreview(null);
+                  setTitle("");
+                  setAmount("");
+                  setCategory("");
+                  setSubcategory("");
+                  setNote("");
+                  setScanError("");
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  background: "#f43f5e",
+                  border: "none",
+                  color: "#fff",
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {scanning && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                marginTop: 16,
+                padding: "12px 16px",
+                background: "#22d3a018",
+                border: "1px solid #22d3a044",
+                borderRadius: 10,
+              }}
+            >
+              <div
+                className="spin"
+                style={{
+                  width: 20,
+                  height: 20,
+                  border: "2px solid #22d3a044",
+                  borderTopColor: "#22d3a0",
+                  borderRadius: "50%",
+                }}
+              />
+              <span style={{ color: "#22d3a0", fontSize: 14, fontWeight: 500 }}>
+                Scanning receipt...
+              </span>
+            </div>
+          )}
+
+          {scanError && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                background: "#f43f5e18",
+                border: "1px solid #f43f5e44",
+                borderRadius: 10,
+                color: "#f43f5e",
+                fontSize: 13,
+              }}
+            >
+              {scanError}
+            </div>
+          )}
+        </div>
+
+        <style>{`
+          .spin { animation: spin 1s linear infinite; }
+          @keyframes spin { to { transform:rotate(360deg); } }
+        `}</style>
+
+        {/* Divider */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            marginBottom: 20,
+            color: "#475569",
+            fontSize: 12,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+          }}
+        >
+          <div style={{ flex: 1, height: 1, background: "#1e2d47" }} />
+          <span>Expense Details</span>
+          <div style={{ flex: 1, height: 1, background: "#1e2d47" }} />
+        </div>
+
+        {/* Form fields */}
+        {[
+          {
+            label: "Transaction Type",
+            el: (
+              <div style={{ display: "flex", gap: 8 }}>
+                {["debit", "credit"].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTxnType(t)}
+                    style={{
+                      flex: 1,
+                      padding: "11px 14px",
+                      borderRadius: 10,
+                      border: "1.5px solid",
+                      borderColor:
+                        txnType === t
+                          ? t === "debit"
+                            ? "#f43f5e"
+                            : "#22d3a0"
+                          : "#1e2d47",
+                      background:
+                        txnType === t
+                          ? t === "debit"
+                            ? "#f43f5e18"
+                            : "#22d3a018"
+                          : "#1a2236",
+                      color:
+                        txnType === t
+                          ? t === "debit"
+                            ? "#f43f5e"
+                            : "#22d3a0"
+                          : "#64748b",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      transition: "all .2s",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>
+                      {t === "debit" ? "🔴" : "🟢"}
+                    </span>
+                    {t === "debit" ? "Paid (Debit)" : "To Receive (Credit)"}
+                  </button>
+                ))}
+              </div>
+            ),
+          },
+          {
+            label: "Expense Title",
+            el: (
+              <input
+                className="modal-input"
+                placeholder="e.g. Zomato dinner"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            ),
+          },
+          {
+            label: "Category",
+            el: (
+              <select
+                className="modal-input"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setSubcategory("");
+                }}
+              >
+                <option value="">Select a category</option>
+                {categories.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.emoji} {c.name}
+                  </option>
+                ))}
+              </select>
+            ),
+          },
+          {
+            label: "Subcategory",
+            el: (
+              <select
+                className="modal-input"
+                value={subcategory}
+                onChange={(e) => setSubcategory(e.target.value)}
+                disabled={!category}
+              >
+                <option value="">
+                  {category ? "Select subcategory" : "Pick a category first"}
+                </option>
+                {subcats.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            ),
+          },
+          {
+            label: "Amount (₹)",
+            el: (
+              <div style={{ position: "relative" }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: "#22d3a0",
+                    fontWeight: 700,
+                  }}
+                >
+                  ₹
+                </span>
+                <input
+                  className="modal-input"
+                  style={{ paddingLeft: 32 }}
+                  type="number"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+            ),
+          },
+          {
+            label: "Date",
+            el: (
+              <input
+                className="modal-input"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            ),
+          },
+          {
+            label: "Note (optional)",
+            el: (
+              <textarea
+                className="modal-input"
+                rows={2}
+                style={{ resize: "none" }}
+                placeholder="Any extra details..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            ),
+          },
+        ].map(({ label, el }) => (
+          <div key={label} style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#64748b",
+                marginBottom: 6,
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+              }}
+            >
+              {label}
+            </div>
+            {el}
+          </div>
+        ))}
+
+        <style>{`
+          .modal-input { width:100%; padding:12px 14px; background:#1a2236; border:1.5px solid #1e2d47; border-radius:10px; color:#e2e8f0; font-size:14px; outline:none; transition:border .2s; font-family:'DM Sans',sans-serif; }
+          .modal-input:focus { border-color:#22d3a0; }
+          .modal-input::placeholder { color:#475569; }
+          .modal-input option { background:#0d1117; }
+        `}</style>
+
+        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: 13,
+              background: "#1a2236",
+              border: "none",
+              borderRadius: 12,
+              color: "#94a3b8",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading || scanning}
+            style={{
+              flex: 2,
+              padding: 13,
+              background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
+              border: "none",
+              borderRadius: 12,
+              color: "#0a0f1e",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: loading || scanning ? "not-allowed" : "pointer",
+              opacity: loading || scanning ? 0.6 : 1,
+            }}
+          >
+            {loading ? "Saving..." : "Save Expense"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── EXPENSE ROW ───────────────────────────────────────────────────────────────
 function ExpenseRow({ exp, onDelete, categories, theme }) {
   const catInfo = categories.find((c) => exp.category.includes(c.name));
@@ -730,7 +1312,15 @@ function ExpenseRow({ exp, onDelete, categories, theme }) {
 }
 
 // ── HOME PAGE ─────────────────────────────────────────────────────────────────
-function HomePage({ expenses, onAdd, onDelete, categories, stats, theme }) {
+function HomePage({
+  expenses,
+  onAdd,
+  onUploadReceipt,
+  onDelete,
+  categories,
+  stats,
+  theme,
+}) {
   const recent = expenses.slice(0, 5);
 
   return (
@@ -837,11 +1427,13 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats, theme }) {
         ))}
       </div>
 
-      {/* Add button */}
-      <div style={{ marginBottom: 32 }}>
+      {/* Action buttons */}
+      <div style={{ display: "flex", gap: 16, marginBottom: 32 }}>
+        {/* Add Expense button */}
         <button
           onClick={onAdd}
           style={{
+            flex: 1,
             display: "flex",
             alignItems: "center",
             gap: 14,
@@ -900,6 +1492,62 @@ function HomePage({ expenses, onAdd, onDelete, categories, stats, theme }) {
             }}
           >
             +
+          </div>
+        </button>
+
+        {/* Upload Receipt button */}
+        <button
+          onClick={onUploadReceipt}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 16,
+            padding: "18px 24px",
+            cursor: "pointer",
+            transition: "all .15s",
+            fontFamily: "'DM Sans',sans-serif",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px)";
+            e.currentTarget.style.borderColor = "#6366f1";
+            e.currentTarget.style.boxShadow = "0 8px 24px rgba(99,102,241,.2)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.borderColor = theme.border;
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              background: "#6366f122",
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 24,
+            }}
+          >
+            📷
+          </div>
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: theme.text }}>
+              Scan Receipt
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: theme.textSecondary,
+                marginTop: 1,
+              }}
+            >
+              Upload & auto-fill
+            </div>
           </div>
         </button>
       </div>
@@ -3064,33 +3712,43 @@ function ChatWidget({ theme }) {
 
     const userMessage = input.trim();
     setInput("");
-    
-    setMessages(prev => [...prev, {
-      role: "user",
-      content: userMessage,
-      timestamp: new Date().toISOString()
-    }]);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userMessage,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
 
     setLoading(true);
 
     try {
       const response = await apiCall("/chat", {
         method: "POST",
-        body: JSON.stringify({ message: userMessage })
+        body: JSON.stringify({ message: userMessage }),
       });
 
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: response.reply,
-        timestamp: new Date().toISOString()
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: response.reply,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "Sorry, I'm having trouble connecting. Please check: 1) NVIDIA_API_KEY is set in backend/.env, 2) Backend is running, 3) OpenRouter API key is valid.",
-        timestamp: new Date().toISOString()
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Sorry, I'm having trouble connecting. Please check: 1) NVIDIA_API_KEY is set in backend/.env, 2) Backend is running, 3) OpenRouter API key is valid.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -3135,33 +3793,39 @@ function ChatWidget({ theme }) {
 
       {/* Chat Window */}
       {isOpen && (
-        <div style={{
-          position: "fixed",
-          bottom: 24,
-          right: 24,
-          width: 380,
-          height: 550,
-          background: theme.cardBg,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 16,
-          boxShadow: `0 8px 32px ${theme.mode === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.15)"}`,
-          zIndex: 1000,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}>
-          {/* Header */}
-          <div style={{
-            padding: "16px 20px",
-            background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
-            color: "#0a0f1e",
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            width: 380,
+            height: 550,
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 16,
+            boxShadow: `0 8px 32px ${theme.mode === "dark" ? "rgba(0,0,0,0.6)" : "rgba(0,0,0,0.15)"}`,
+            zIndex: 1000,
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}>
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              padding: "16px 20px",
+              background: "linear-gradient(135deg,#22d3a0,#14b8a6)",
+              color: "#0a0f1e",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <div>
               <div style={{ fontWeight: 700, fontSize: 16 }}>🤖 AI Advisor</div>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>Powered by NVIDIA Nemotron</div>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>
+                Powered by NVIDIA Nemotron
+              </div>
             </div>
             <button
               onClick={() => setIsOpen(false)}
@@ -3184,18 +3848,32 @@ function ChatWidget({ theme }) {
           </div>
 
           {/* Messages */}
-          <div style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "16px",
-            background: theme.bg,
-          }}>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "16px",
+              background: theme.bg,
+            }}
+          >
             {messages.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px 20px", color: theme.textSecondary }}>
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "40px 20px",
+                  color: theme.textSecondary,
+                }}
+              >
                 <div style={{ fontSize: 40, marginBottom: 12 }}>👋</div>
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Hi! I'm your AI advisor</div>
-                <div style={{ fontSize: 12, marginBottom: 16 }}>Ask me about your spending</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+                  Hi! I'm your AI advisor
+                </div>
+                <div style={{ fontSize: 12, marginBottom: 16 }}>
+                  Ask me about your spending
+                </div>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
                   <button
                     onClick={() => setInput("How can I save money?")}
                     style={{
@@ -3234,7 +3912,8 @@ function ChatWidget({ theme }) {
                     style={{
                       marginBottom: 12,
                       display: "flex",
-                      justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                      justifyContent:
+                        msg.role === "user" ? "flex-end" : "flex-start",
                     }}
                   >
                     <div
@@ -3242,14 +3921,18 @@ function ChatWidget({ theme }) {
                         maxWidth: "80%",
                         padding: "10px 14px",
                         borderRadius: 12,
-                        background: msg.role === "user"
-                          ? "linear-gradient(135deg,#22d3a0,#14b8a6)"
-                          : theme.cardBg,
+                        background:
+                          msg.role === "user"
+                            ? "linear-gradient(135deg,#22d3a0,#14b8a6)"
+                            : theme.cardBg,
                         color: msg.role === "user" ? "#0a0f1e" : theme.text,
                         fontSize: 13,
                         lineHeight: 1.5,
                         whiteSpace: "pre-wrap",
-                        border: msg.role === "assistant" ? `1px solid ${theme.border}` : "none",
+                        border:
+                          msg.role === "assistant"
+                            ? `1px solid ${theme.border}`
+                            : "none",
                       }}
                     >
                       {msg.content}
@@ -3257,15 +3940,23 @@ function ChatWidget({ theme }) {
                   </div>
                 ))}
                 {loading && (
-                  <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 12 }}>
-                    <div style={{
-                      padding: "10px 14px",
-                      borderRadius: 12,
-                      background: theme.cardBg,
-                      border: `1px solid ${theme.border}`,
-                      color: theme.textSecondary,
-                      fontSize: 13,
-                    }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-start",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        background: theme.cardBg,
+                        border: `1px solid ${theme.border}`,
+                        color: theme.textSecondary,
+                        fontSize: 13,
+                      }}
+                    >
                       <span>Thinking</span>
                       <span className="dots">...</span>
                     </div>
@@ -3277,13 +3968,15 @@ function ChatWidget({ theme }) {
           </div>
 
           {/* Input */}
-          <div style={{
-            padding: "12px 16px",
-            background: theme.cardBg,
-            borderTop: `1px solid ${theme.border}`,
-            display: "flex",
-            gap: 8,
-          }}>
+          <div
+            style={{
+              padding: "12px 16px",
+              background: theme.cardBg,
+              borderTop: `1px solid ${theme.border}`,
+              display: "flex",
+              gap: 8,
+            }}
+          >
             <input
               type="text"
               value={input}
@@ -3308,12 +4001,14 @@ function ChatWidget({ theme }) {
               disabled={!input.trim() || loading}
               style={{
                 padding: "10px 16px",
-                background: input.trim() && !loading
-                  ? "linear-gradient(135deg,#22d3a0,#14b8a6)"
-                  : theme.cardBgHover,
+                background:
+                  input.trim() && !loading
+                    ? "linear-gradient(135deg,#22d3a0,#14b8a6)"
+                    : theme.cardBgHover,
                 border: "none",
                 borderRadius: 8,
-                color: input.trim() && !loading ? "#0a0f1e" : theme.textTertiary,
+                color:
+                  input.trim() && !loading ? "#0a0f1e" : theme.textTertiary,
                 cursor: input.trim() && !loading ? "pointer" : "not-allowed",
                 fontSize: 13,
                 fontWeight: 700,
@@ -3336,6 +4031,7 @@ function Sidebar({
   user,
   onSignOut,
   onAdd,
+  onUploadReceipt,
   theme,
   onToggleTheme,
 }) {
@@ -3406,6 +4102,7 @@ function Sidebar({
             gap: 10,
             cursor: "pointer",
             fontFamily: "inherit",
+            marginBottom: 8,
           }}
         >
           <span style={{ fontSize: 16 }}>🧾</span>
@@ -3421,6 +4118,35 @@ function Sidebar({
             }}
           >
             +
+          </span>
+        </button>
+        <button
+          onClick={onUploadReceipt}
+          style={{
+            width: "100%",
+            padding: "11px 16px",
+            background: theme.cardBg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            cursor: "pointer",
+            fontFamily: "inherit",
+            transition: "all .2s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "#6366f1";
+            e.currentTarget.style.background = "#6366f110";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = theme.border;
+            e.currentTarget.style.background = theme.cardBg;
+          }}
+        >
+          <span style={{ fontSize: 16 }}>📷</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: theme.text }}>
+            Scan Receipt
           </span>
         </button>
       </div>
@@ -3546,6 +4272,7 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
   const [modal, setModal] = useState(false);
+  const [receiptModal, setReceiptModal] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     thisMonth: 0,
@@ -3765,6 +4492,7 @@ export default function App() {
         user={user}
         onSignOut={signOut}
         onAdd={() => setModal(true)}
+        onUploadReceipt={() => setReceiptModal(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -3819,6 +4547,7 @@ export default function App() {
           <HomePage
             expenses={expenses}
             onAdd={() => setModal(true)}
+            onUploadReceipt={() => setReceiptModal(true)}
             onDelete={deleteExpense}
             categories={categories}
             stats={stats}
@@ -3866,6 +4595,15 @@ export default function App() {
       {modal && (
         <AddExpenseModal
           onClose={() => setModal(false)}
+          onAdd={refreshExpenses}
+          onAddReceivable={addReceivable}
+          categories={categories}
+        />
+      )}
+
+      {receiptModal && (
+        <ReceiptUploadModal
+          onClose={() => setReceiptModal(false)}
           onAdd={refreshExpenses}
           onAddReceivable={addReceivable}
           categories={categories}
