@@ -50,3 +50,19 @@ type Receivable struct {
 	Date           string  `json:"date"`
 	Received       bool    `json:"received"`
 }
+
+type ChatMessage struct {
+	ID        int64  `json:"id"`
+	Role      string `json:"role"` // "user" or "assistant"
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+type ChatRequest struct {
+	Message string `json:"message"`
+}
+
+type ChatResponse struct {
+	Reply    string        `json:"reply"`
+	Messages []ChatMessage `json:"messages"`
+}
