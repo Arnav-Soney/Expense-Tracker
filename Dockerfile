@@ -1,10 +1,11 @@
 # Build frontend
 FROM node:20-alpine AS frontend-builder
+RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN npm ci
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
-RUN npm run build
+RUN pnpm run build
 
 # Build Go backend
 FROM golang:1.25-alpine AS backend-builder
@@ -12,6 +13,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
+COPY backend/ ./backend/
 RUN CGO_ENABLED=0 GOOS=linux go build -o /expense-tracker
 
 # Final image
