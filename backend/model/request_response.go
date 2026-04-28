@@ -66,3 +66,19 @@ type ChatResponse struct {
 	Reply    string        `json:"reply"`
 	Messages []ChatMessage `json:"messages"`
 }
+
+// Receipt OCR types
+type ReceiptOCRRequest struct {
+	ImageData string `json:"imageData"` // Base64 encoded image
+}
+
+type ReceiptOCRResponse struct {
+	Success     bool    `json:"success"`
+	Title       string  `json:"title"`
+	Amount      float64 `json:"amount"`
+	Category    string  `json:"category"`
+	Subcategory string  `json:"subcategory"`
+	Date        string  `json:"date"`
+	Note        string  `json:"note"`
+	Error       string  `json:"error,omitempty"`
+}

@@ -979,6 +979,198 @@ User's question: %s`, req.Message)
 	})
 }
 
+// Receipt OCR handler - extracts expense information from receipt images
+func receiptOCRHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req model.ReceiptOCRRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "Invalid request format",
+		})
+		return
+	}
+
+	if req.ImageData == "" {
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "No image data provided",
+		})
+		return
+	}
+
+	// Get categories for context
+	rows, err := db.Query(context.Background(), `
+		SELECT c.name, c.emoji, COALESCE(array_agg(s.name ORDER BY s.display_order), '{}') as subcategories
+		FROM categories c
+		LEFT JOIN subcategories s ON c.id = s.category_id AND s.is_active = true
+		WHERE c.is_active = true
+		GROUP BY c.id, c.name, c.emoji, c.display_order
+		ORDER BY c.display_order
+	`)
+	if err != nil {
+		log.Println("Failed to fetch categories for OCR:", err)
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "Failed to fetch categories",
+		})
+		return
+	}
+	defer rows.Close()
+
+	var categories []model.CategoryInfo
+	for rows.Next() {
+		var cat model.CategoryInfo
+		if err := rows.Scan(&cat.Name, &cat.Emoji, &cat.Subcategories); err != nil {
+			continue
+		}
+		categories = append(categories, cat)
+	}
+
+	// Build category context for the AI
+	categoryContext := "Available categories and their subcategories:\n"
+	for _, cat := range categories {
+		categoryContext += fmt.Sprintf("- %s %s: %v\n", cat.Emoji, cat.Name, cat.Subcategories)
+	}
+
+	// Call AI API with vision capability
+	apiKey := os.Getenv("NVIDIA_API_KEY")
+	if apiKey == "" {
+		log.Println("NVIDIA_API_KEY not set")
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "AI service not configured",
+		})
+		return
+	}
+
+	visionModel := os.Getenv("AI_VISION_MODEL")
+	if visionModel == "" {
+		visionModel = "google/gemini-2.0-flash-001" // Default vision model
+	}
+	baseURL := os.Getenv("AI_BASE_URL")
+
+	config := openai.DefaultConfig(apiKey)
+	config.BaseURL = baseURL
+	client := openai.NewClientWithConfig(config)
+
+	prompt := fmt.Sprintf(`Analyze this receipt image and extract the following information:
+1. Title/Description of the expense (what was purchased or the store name)
+2. Total amount (in INR, just the number)
+3. The most appropriate category from this list: %s
+4. The most appropriate subcategory from the selected category
+5. Date of purchase (in YYYY-MM-DD format, use today's date %s if not visible)
+6. Any additional notes
+
+%s
+
+IMPORTANT: Respond ONLY with a valid JSON object in this exact format, no additional text:
+{
+  "title": "expense title here",
+  "amount": 123.45,
+  "category": "Category Name",
+  "subcategory": "Subcategory Name",
+  "date": "YYYY-MM-DD",
+  "note": "any additional notes"
+}`, categoryContext, time.Now().Format("2006-01-02"), categoryContext)
+
+	chatReq := openai.ChatCompletionRequest{
+		Model: visionModel,
+		Messages: []openai.ChatCompletionMessage{
+			{
+				Role: openai.ChatMessageRoleUser,
+				MultiContent: []openai.ChatMessagePart{
+					{
+						Type: openai.ChatMessagePartTypeText,
+						Text: prompt,
+					},
+					{
+						Type: openai.ChatMessagePartTypeImageURL,
+						ImageURL: &openai.ChatMessageImageURL{
+							URL:    req.ImageData,
+							Detail: openai.ImageURLDetailAuto,
+						},
+					},
+				},
+			},
+		},
+		MaxTokens:   500,
+		Temperature: 0.1,
+	}
+
+	resp, err := client.CreateChatCompletion(context.Background(), chatReq)
+	if err != nil {
+		log.Println("Vision API error:", err)
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "Failed to analyze receipt: " + err.Error(),
+		})
+		return
+	}
+
+	if len(resp.Choices) == 0 {
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "No response from AI",
+		})
+		return
+	}
+
+	aiResponse := resp.Choices[0].Message.Content
+	log.Println("Receipt OCR AI response:", aiResponse)
+
+	// Parse the JSON response from AI
+	var extractedData struct {
+		Title       string  `json:"title"`
+		Amount      float64 `json:"amount"`
+		Category    string  `json:"category"`
+		Subcategory string  `json:"subcategory"`
+		Date        string  `json:"date"`
+		Note        string  `json:"note"`
+	}
+
+	// Try to extract JSON from the response (in case there's extra text)
+	jsonStart := strings.Index(aiResponse, "{")
+	jsonEnd := strings.LastIndex(aiResponse, "}") + 1
+	if jsonStart >= 0 && jsonEnd > jsonStart {
+		aiResponse = aiResponse[jsonStart:jsonEnd]
+	}
+
+	if err := json.Unmarshal([]byte(aiResponse), &extractedData); err != nil {
+		log.Println("Failed to parse AI response:", err, "Response:", aiResponse)
+		json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+			Success: false,
+			Error:   "Failed to parse receipt data",
+		})
+		return
+	}
+
+	// Find the category emoji and format properly
+	categoryFormatted := extractedData.Category
+	for _, cat := range categories {
+		if strings.EqualFold(cat.Name, extractedData.Category) {
+			categoryFormatted = fmt.Sprintf("%s %s", cat.Emoji, cat.Name)
+			break
+		}
+	}
+
+	json.NewEncoder(w).Encode(model.ReceiptOCRResponse{
+		Success:     true,
+		Title:       extractedData.Title,
+		Amount:      extractedData.Amount,
+		Category:    categoryFormatted,
+		Subcategory: extractedData.Subcategory,
+		Date:        extractedData.Date,
+		Note:        extractedData.Note,
+	})
+}
+
 func seedData(seedUserID int64) {
 	// Check if user was already seeded (using a flag column)
 	var seeded bool
@@ -1279,6 +1471,9 @@ func main() {
 
 	// AI Chatbot route
 	mux.HandleFunc("/api/chat", authMiddleware(chatbotHandler))
+
+	// Receipt OCR route
+	mux.HandleFunc("/api/receipt/ocr", authMiddleware(receiptOCRHandler))
 
 	// Serve frontend static files
 	staticDir := "./frontend"
