@@ -23,7 +23,7 @@ jobs:
 
       - name: Generate changelog
         id: changelog
-        uses: orhun/git-cliff-action@v3
+        uses: orhun/git-cliff-action@v4
         continue-on-error: true
         with:
           config: cliff.toml
